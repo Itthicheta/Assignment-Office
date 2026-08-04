@@ -77,8 +77,10 @@ single-page app via Cloudflare Workers static assets.
    (they are baked in at build time)
 4. Deploy
 
-The classic Cloudflare **Pages** flow also works (build output `dist`,
-SPA fallback provided by `public/_redirects`).
+(If you ever use the classic Cloudflare **Pages** flow instead, set build
+output to `dist` and add a `public/_redirects` file containing
+`/* /index.html 200` — do not keep that file for Workers deploys, as the
+two SPA-fallback mechanisms conflict.)
 
 ### 4. First run
 
