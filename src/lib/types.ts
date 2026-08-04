@@ -1,4 +1,4 @@
-export type Status = 'todo' | 'in_progress' | 'in_review' | 'blocked' | 'done'
+export type Status = 'todo' | 'in_progress' | 'in_review' | 'blocked' | 'done' | 'cancelled'
 export type Priority = 'urgent' | 'high' | 'normal' | 'low'
 
 export interface Profile {
@@ -43,7 +43,8 @@ export interface Comment {
 
 export interface Activity {
   id: string
-  task_id: string
+  project_id: string
+  task_id: string | null
   actor_id: string
   action: string
   detail: Record<string, string>
@@ -60,5 +61,5 @@ export interface Notification {
   created_at: string
 }
 
-export const STATUSES: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'done']
+export const STATUSES: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'done', 'cancelled']
 export const PRIORITIES: Priority[] = ['urgent', 'high', 'normal', 'low']

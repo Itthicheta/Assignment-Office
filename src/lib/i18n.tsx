@@ -31,6 +31,7 @@ const dict = {
   in_review: { en: 'In Review', th: 'รอตรวจ' },
   blocked: { en: 'Blocked', th: 'ติดปัญหา' },
   done: { en: 'Done', th: 'เสร็จแล้ว' },
+  cancelled: { en: 'Cancelled', th: 'ยกเลิก' },
 
   // Priorities
   urgent: { en: 'Urgent', th: 'ด่วนมาก' },
@@ -81,6 +82,7 @@ const dict = {
   act_unassigned: { en: 'removed the assignee', th: 'ยกเลิกการมอบหมาย' },
   act_due: { en: 'set due date to', th: 'ตั้งกำหนดส่งเป็น' },
   act_priority: { en: 'set priority to', th: 'ตั้งความสำคัญเป็น' },
+  act_deleted: { en: 'deleted task', th: 'ลบงาน' },
 
   // Notifications
   notif_assigned: { en: 'assigned you a task', th: 'มอบหมายงานให้คุณ' },

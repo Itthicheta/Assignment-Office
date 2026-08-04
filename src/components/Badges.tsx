@@ -7,6 +7,7 @@ export const STATUS_STYLES: Record<Status, string> = {
   in_review: 'bg-amber-100 text-amber-700',
   blocked: 'bg-red-100 text-red-700',
   done: 'bg-emerald-100 text-emerald-700',
+  cancelled: 'bg-slate-100 text-slate-400 line-through',
 }
 
 const PRIORITY_STYLES: Record<Priority, string> = {

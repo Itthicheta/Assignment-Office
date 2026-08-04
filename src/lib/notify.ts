@@ -17,12 +17,14 @@ export async function notify(opts: {
 }
 
 export async function logActivity(opts: {
+  projectId: string
   taskId: string
   actorId: string
   action: string
   detail?: Record<string, string>
 }) {
   await supabase.from('activity').insert({
+    project_id: opts.projectId,
     task_id: opts.taskId,
     actor_id: opts.actorId,
     action: opts.action,
