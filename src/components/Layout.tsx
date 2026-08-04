@@ -22,6 +22,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         <nav className="ml-4 hidden items-center gap-1 sm:flex">
           <NavLink to="/" end className={navCls}>{t('myTasks')}</NavLink>
           <NavLink to="/projects" className={navCls}>{t('projects')}</NavLink>
+          {profile?.role === 'admin' && <NavLink to="/team" className={navCls}>{t('team')}</NavLink>}
         </nav>
         <div className="ml-auto flex items-center gap-3">
           <button
@@ -50,6 +51,11 @@ export default function Layout({ children }: { children: ReactNode }) {
         <NavLink to="/projects" className={({ isActive }) => `flex-1 py-3 text-center text-sm font-medium ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>
           {t('projects')}
         </NavLink>
+        {profile?.role === 'admin' && (
+          <NavLink to="/team" className={({ isActive }) => `flex-1 py-3 text-center text-sm font-medium ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>
+            {t('team')}
+          </NavLink>
+        )}
       </nav>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-20 sm:pb-6">{children}</main>

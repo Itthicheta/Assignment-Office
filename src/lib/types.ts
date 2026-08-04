@@ -4,6 +4,7 @@ export type Priority = 'urgent' | 'high' | 'normal' | 'low'
 export interface Profile {
   id: string
   full_name: string
+  username: string | null
   role: 'admin' | 'member'
 }
 

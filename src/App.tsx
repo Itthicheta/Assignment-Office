@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import MyTasks from './pages/MyTasks'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
+import Team from './pages/Team'
 
 export default function App() {
   const { session, loading } = useAuth()
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/" element={<MyTasks />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectDetail />} />
+        <Route path="/team" element={<Team />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
