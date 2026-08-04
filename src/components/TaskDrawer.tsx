@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n, type TKey } from '../lib/i18n'
 import { logActivity, notify } from '../lib/notify'
+import { changeTaskStatus } from '../lib/taskActions'
 import { canDelete, canEditDescription, canEditFields, canToggleSubtask, statusChoices } from '../lib/can'
 import type { Activity, Comment, Priority, Status, Task } from '../lib/types'
 import { PRIORITIES } from '../lib/types'
@@ -65,17 +66,12 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
   }
 
   const changeStatus = async (status: Status) => {
-    if (!(await patch({ status }))) return
-    await logActivity({ projectId: task.project_id, taskId: task.id, actorId: me, action: 'status', detail: { status } })
-    if (status === 'in_review' && me !== task.created_by) {
-      await notify({ userId: task.created_by, actorId: me, taskId: task.id, type: 'review' })
+    const err = await changeTaskStatus(task, status, me)
+    if (err) {
+      alert(err)
+      return
     }
-    if (task.status === 'in_review' && ['todo', 'in_progress'].includes(status) && me !== task.assignee_id) {
-      await notify({ userId: task.assignee_id, actorId: me, taskId: task.id, type: 'returned' })
-    }
-    if (status === 'done' && me !== task.assignee_id) {
-      await notify({ userId: task.assignee_id, actorId: me, taskId: task.id, type: 'done' })
-    }
+    onChanged()
     reloadActivity()
   }
 
