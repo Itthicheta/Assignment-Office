@@ -1,91 +1,198 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
-import { PriorityBadge, StatusBadge } from '../components/Badges'
+import { PriorityBadge } from '../components/Badges'
 import Avatar from '../components/Avatar'
 import type { Task } from '../lib/types'
 
 interface TaskWithProject extends Task {
-  project: { id: string; name: string; color: string } | null
+  project: { id: string; name: string; color: string; created_at: string } | null
 }
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
+const FILTER_KEY = 'mytasks_project_filter'
+
+function SortableRow({ task, myPos }: { task: TaskWithProject; myPos: number }) {
+  const navigate = useNavigate()
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+  const overdue = task.due_date && task.due_date < todayStr()
+  const waitingCheck = task.tick_done && !task.tick_checked
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      onClick={() => navigate(`/projects/${task.project_id}?task=${task.id}`)}
+      className={`flex cursor-pointer items-center gap-2 rounded-xl border bg-white px-3 py-3 shadow-sm hover:border-indigo-300 ${
+        isDragging ? 'z-10 opacity-70' : ''
+      } ${waitingCheck ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}
+      data-pos={myPos}
+    >
+      <span
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className="cursor-grab touch-none px-1 text-slate-300 select-none active:cursor-grabbing"
+      >
+        ⠿
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{task.title}</span>
+        {task.parent_id && <span className="text-xs text-slate-400">↳ subtask</span>}
+      </span>
+      <PriorityBadge priority={task.priority} />
+      {task.due_date && (
+        <span className={`text-xs whitespace-nowrap ${overdue ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
+          {task.due_date}
+        </span>
+      )}
+    </div>
+  )
+}
 
 export default function MyTasks() {
   const { session, profiles } = useAuth()
   const { t } = useI18n()
   const [mine, setMine] = useState<TaskWithProject[]>([])
   const [reviews, setReviews] = useState<TaskWithProject[]>([])
+  const [order, setOrder] = useState<Record<string, number>>({})
+  const [filter, setFilter] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(FILTER_KEY) ?? '[]')
+    } catch {
+      return []
+    }
+  })
+  const [filterOpen, setFilterOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  )
+
+  const load = async () => {
+    if (!session) return
+    const [a, b, o] = await Promise.all([
+      supabase
+        .from('tasks')
+        .select('*, project:projects(id, name, color, created_at)')
+        .eq('assignee_id', session.user.id)
+        .eq('status', 'in_progress'),
+      supabase
+        .from('tasks')
+        .select('*, project:projects(id, name, color, created_at)')
+        .eq('created_by', session.user.id)
+        .eq('status', 'in_progress')
+        .eq('tick_done', true)
+        .is('parent_id', null)
+        .neq('assignee_id', session.user.id),
+      supabase.from('my_task_order').select('*').eq('user_id', session.user.id),
+    ])
+    setMine((a.data as TaskWithProject[]) ?? [])
+    setReviews((b.data as TaskWithProject[]) ?? [])
+    const ord: Record<string, number> = {}
+    for (const row of o.data ?? []) ord[row.task_id] = row.position
+    setOrder(ord)
+    setLoaded(true)
+  }
 
   useEffect(() => {
-    if (!session) return
-    const load = async () => {
-      const [a, b] = await Promise.all([
-        supabase
-          .from('tasks')
-          .select('*, project:projects(id, name, color)')
-          .eq('assignee_id', session.user.id)
-          .not('status', 'in', '("done","cancelled")')
-          .order('due_date', { ascending: true, nullsFirst: false }),
-        supabase
-          .from('tasks')
-          .select('*, project:projects(id, name, color)')
-          .eq('created_by', session.user.id)
-          .eq('status', 'in_review')
-          .neq('assignee_id', session.user.id),
-      ])
-      setMine((a.data as TaskWithProject[]) ?? [])
-      setReviews((b.data as TaskWithProject[]) ?? [])
-      setLoaded(true)
-    }
     load()
   }, [session?.user.id])
 
-  const today = todayStr()
-  const groups: { key: string; label: string; items: TaskWithProject[]; cls: string }[] = [
-    { key: 'overdue', label: t('overdue'), cls: 'text-red-600', items: mine.filter((x) => x.due_date && x.due_date < today) },
-    { key: 'today', label: t('dueToday'), cls: 'text-amber-600', items: mine.filter((x) => x.due_date === today) },
-    { key: 'upcoming', label: t('upcoming'), cls: 'text-slate-700', items: mine.filter((x) => x.due_date && x.due_date > today) },
-    { key: 'nodate', label: t('noDueDate'), cls: 'text-slate-500', items: mine.filter((x) => !x.due_date) },
-  ]
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
 
-  const row = (task: TaskWithProject) => {
-    const overdue = task.due_date && task.due_date < today && task.status !== 'done'
-    return (
-      <Link
-        key={task.id}
-        to={`/projects/${task.project_id}?task=${task.id}`}
-        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm hover:border-indigo-300"
-      >
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: task.project?.color ?? '#94a3b8' }} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{task.title}</span>
-          <span className="block truncate text-xs text-slate-400">{task.project?.name}</span>
-        </span>
-        <PriorityBadge priority={task.priority} />
-        {task.due_date && (
-          <span className={`text-xs whitespace-nowrap ${overdue ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
-            {task.due_date}
-          </span>
-        )}
-        <StatusBadge status={task.status} />
-      </Link>
-    )
+  const myProjects = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; color: string; created_at: string }>()
+    for (const task of mine) if (task.project) map.set(task.project.id, task.project)
+    return [...map.values()].sort((x, y) => x.created_at.localeCompare(y.created_at))
+  }, [mine])
+
+  const activeFilter = filter.length ? filter : myProjects.map((p) => p.id)
+
+  const toggleFilter = (pid: string) => {
+    const base = filter.length ? filter : myProjects.map((p) => p.id)
+    const next = base.includes(pid) ? base.filter((x) => x !== pid) : [...base, pid]
+    const val = next.length === myProjects.length ? [] : next
+    setFilter(val)
+    localStorage.setItem(FILTER_KEY, JSON.stringify(val))
+  }
+
+  const sortKey = (task: TaskWithProject) => order[task.id] ?? task.position
+
+  const onDragEnd = (groupTasks: TaskWithProject[]) => async (e: DragEndEvent) => {
+    const { active, over } = e
+    if (!over || active.id === over.id || !session) return
+    const sorted = [...groupTasks].sort((x, y) => sortKey(x) - sortKey(y))
+    const oldIndex = sorted.findIndex((x) => x.id === active.id)
+    const newIndex = sorted.findIndex((x) => x.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    const reordered = arrayMove(sorted, oldIndex, newIndex)
+    const before = reordered[newIndex - 1] ? sortKey(reordered[newIndex - 1]) : undefined
+    const after = reordered[newIndex + 1] ? sortKey(reordered[newIndex + 1]) : undefined
+    const newPos =
+      before !== undefined && after !== undefined
+        ? (before + after) / 2
+        : before !== undefined
+          ? before + 1
+          : after !== undefined
+            ? after - 1
+            : 0
+    setOrder((o) => ({ ...o, [active.id as string]: newPos }))
+    await supabase.from('my_task_order').upsert({ user_id: session.user.id, task_id: active.id, position: newPos })
   }
 
   if (!loaded) return <p className="text-slate-400">{t('loading')}</p>
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold">{t('myTasks')}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">{t('myTasks')}</h1>
+        {myProjects.length > 0 && (
+          <div className="relative" ref={filterRef}>
+            <button
+              onClick={() => setFilterOpen(!filterOpen)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              {filter.length === 0 ? t('allProjects') : `${activeFilter.length}/${myProjects.length}`} ▾
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                {myProjects.map((p) => (
+                  <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={activeFilter.includes(p.id)}
+                      onChange={() => toggleFilter(p.id)}
+                      className="h-4 w-4 accent-indigo-600"
+                    />
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} />
+                    <span className="truncate">{p.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {reviews.length > 0 && (
         <section>
           <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-600">
-            👀 {t('waitingMyReview')} <span className="text-xs">({reviews.length})</span>
+            👀 {t('waitingMyCheck')} <span className="text-xs">({reviews.length})</span>
           </h2>
           <div className="space-y-2">
             {reviews.map((task) => {
@@ -101,7 +208,6 @@ export default function MyTasks() {
                     <span className="block truncate text-sm font-medium">{task.title}</span>
                     <span className="block truncate text-xs text-slate-400">{task.project?.name}</span>
                   </span>
-                  <StatusBadge status={task.status} />
                 </Link>
               )
             })}
@@ -115,17 +221,31 @@ export default function MyTasks() {
         </p>
       )}
 
-      {groups.map(
-        (g) =>
-          g.items.length > 0 && (
-            <section key={g.key}>
-              <h2 className={`mb-2 text-sm font-semibold ${g.cls}`}>
-                {g.label} <span className="text-xs font-normal">({g.items.length})</span>
+      {myProjects
+        .filter((p) => activeFilter.includes(p.id))
+        .map((proj) => {
+          const groupTasks = mine
+            .filter((task) => task.project_id === proj.id)
+            .sort((x, y) => sortKey(x) - sortKey(y))
+          if (groupTasks.length === 0) return null
+          return (
+            <section key={proj.id}>
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: proj.color }} />
+                {proj.name} <span className="text-xs font-normal text-slate-400">({groupTasks.length})</span>
               </h2>
-              <div className="space-y-2">{g.items.map(row)}</div>
+              <DndContext sensors={sensors} onDragEnd={onDragEnd(groupTasks)}>
+                <SortableContext items={groupTasks.map((x) => x.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-2">
+                    {groupTasks.map((task) => (
+                      <SortableRow key={task.id} task={task} myPos={sortKey(task)} />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </section>
-          ),
-      )}
+          )
+        })}
     </div>
   )
 }

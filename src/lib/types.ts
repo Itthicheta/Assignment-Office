@@ -1,5 +1,5 @@
-export type Status = 'todo' | 'in_progress' | 'in_review' | 'blocked' | 'done' | 'cancelled'
-export type Priority = 'urgent' | 'high' | 'normal' | 'low'
+export type Status = 'in_progress' | 'done'
+export type Priority = 'normal' | 'urgent'
 
 export interface Profile {
   id: string
@@ -26,6 +26,9 @@ export interface Task {
   description: string
   status: Status
   priority: Priority
+  tick_done: boolean
+  tick_checked: boolean
+  position: number
   assignee_id: string | null
   due_date: string | null
   created_by: string
@@ -62,5 +65,32 @@ export interface Notification {
   created_at: string
 }
 
-export const STATUSES: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'done', 'cancelled']
-export const PRIORITIES: Priority[] = ['urgent', 'high', 'normal', 'low']
+export interface Attachment {
+  id: string
+  project_id: string
+  task_id: string | null
+  name: string
+  path: string
+  size: number
+  uploaded_by: string
+  created_at: string
+}
+
+export interface Routine {
+  id: string
+  title: string
+  assignee_id: string
+  repeat_type: 'weekly' | 'monthly'
+  weekdays: number[]   // 0 = Sunday … 6 = Saturday
+  monthdays: number[]  // 1 … 31
+  active: boolean
+  created_by: string
+  created_at: string
+}
+
+export interface RoutineCompletion {
+  routine_id: string
+  on_date: string
+  completed_by: string
+  completed_at: string
+}

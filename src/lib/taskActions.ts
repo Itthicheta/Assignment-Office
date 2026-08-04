@@ -1,22 +1,47 @@
 import { supabase } from './supabase'
 import { logActivity, notify } from './notify'
-import type { Status, Task } from './types'
+import type { Task } from './types'
 
-// Change a task's status with the same side effects everywhere it happens
-// (list row or task drawer): activity log entry + workflow notifications.
+// Toggle the assignee's work tick. Same side effects everywhere it happens.
 // Returns an error message, or null on success.
-export async function changeTaskStatus(task: Task, status: Status, actorId: string): Promise<string | null> {
-  const { error } = await supabase.from('tasks').update({ status }).eq('id', task.id)
+export async function setTickDone(task: Task, value: boolean, actorId: string): Promise<string | null> {
+  const { error } = await supabase.from('tasks').update({ tick_done: value }).eq('id', task.id)
   if (error) return error.message
-  await logActivity({ projectId: task.project_id, taskId: task.id, actorId, action: 'status', detail: { status } })
-  if (status === 'in_review' && actorId !== task.created_by) {
+  await logActivity({
+    projectId: task.project_id,
+    taskId: task.id,
+    actorId,
+    action: value ? 'tick_done' : 'untick_done',
+  })
+  if (value && actorId !== task.created_by) {
     await notify({ userId: task.created_by, actorId, taskId: task.id, type: 'review' })
   }
-  if (task.status === 'in_review' && ['todo', 'in_progress'].includes(status) && actorId !== task.assignee_id) {
-    await notify({ userId: task.assignee_id, actorId, taskId: task.id, type: 'returned' })
+  return null
+}
+
+// Toggle the creator/admin approval tick.
+export async function setTickChecked(task: Task, value: boolean, actorId: string): Promise<string | null> {
+  const { error } = await supabase.from('tasks').update({ tick_checked: value }).eq('id', task.id)
+  if (error) return error.message
+  await logActivity({
+    projectId: task.project_id,
+    taskId: task.id,
+    actorId,
+    action: value ? 'checked' : 'unchecked',
+  })
+  if (actorId !== task.assignee_id) {
+    await notify({ userId: task.assignee_id, actorId, taskId: task.id, type: value ? 'done' : 'returned' })
   }
-  if (status === 'done' && actorId !== task.assignee_id) {
-    await notify({ userId: task.assignee_id, actorId, taskId: task.id, type: 'done' })
+  return null
+}
+
+// Reject work: creator/admin unticks the assignee's work tick to send it back.
+export async function rejectWork(task: Task, actorId: string): Promise<string | null> {
+  const { error } = await supabase.from('tasks').update({ tick_done: false }).eq('id', task.id)
+  if (error) return error.message
+  await logActivity({ projectId: task.project_id, taskId: task.id, actorId, action: 'untick_done' })
+  if (actorId !== task.assignee_id) {
+    await notify({ userId: task.assignee_id, actorId, taskId: task.id, type: 'returned' })
   }
   return null
 }

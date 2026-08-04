@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
+import { isAdmin } from '../lib/can'
 import type { Project } from '../lib/types'
 
 const PALETTE = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#0ea5e9', '#a855f7', '#ec4899', '#14b8a6']
@@ -13,7 +14,7 @@ interface Counts {
 }
 
 export default function Projects() {
-  const { session } = useAuth()
+  const { session, profile } = useAuth()
   const { t } = useI18n()
   const [projects, setProjects] = useState<Project[]>([])
   const [counts, setCounts] = useState<Record<string, Counts>>({})
@@ -30,7 +31,6 @@ export default function Projects() {
     setProjects((p.data as Project[]) ?? [])
     const c: Record<string, Counts> = {}
     for (const row of tsk.data ?? []) {
-      if (row.status === 'cancelled') continue
       c[row.project_id] ??= { total: 0, done: 0 }
       c[row.project_id].total++
       if (row.status === 'done') c[row.project_id].done++
@@ -65,12 +65,14 @@ export default function Projects() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">{t('projects')}</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
-        >
-          + {t('newProject')}
-        </button>
+        {isAdmin(profile) && (
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            + {t('newProject')}
+          </button>
+        )}
       </div>
 
       {showForm && (

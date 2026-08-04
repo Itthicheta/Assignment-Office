@@ -3,11 +3,17 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n, type TKey } from '../lib/i18n'
 import { logActivity, notify } from '../lib/notify'
-import { changeTaskStatus } from '../lib/taskActions'
-import { canDelete, canEditDescription, canEditFields, canToggleSubtask, statusChoices } from '../lib/can'
-import type { Activity, Comment, Priority, Status, Task } from '../lib/types'
-import { PRIORITIES } from '../lib/types'
+import {
+  canAddSubtask,
+  canDelete,
+  canEditDescription,
+  canEditFields,
+  canEditSubtask,
+} from '../lib/can'
+import type { Activity, Comment, Priority, Task } from '../lib/types'
 import Avatar from './Avatar'
+import TaskTicks from './TaskTicks'
+import FilesSection from './FilesSection'
 
 interface Props {
   task: Task
@@ -25,11 +31,11 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
   const [newSub, setNewSub] = useState('')
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
+  const [subEdits, setSubEdits] = useState<Record<string, string>>({})
 
   const me = session!.user.id
   const editor = canEditFields(profile, task)
   const descEditor = canEditDescription(profile, task)
-  const statuses = statusChoices(profile, task)
 
   useEffect(() => {
     setTitle(task.title)
@@ -37,7 +43,7 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
     const load = async () => {
       const [c, a] = await Promise.all([
         supabase.from('comments').select('*').eq('task_id', task.id).order('created_at'),
-        supabase.from('activity').select('*').eq('task_id', task.id).order('created_at', { ascending: false }).limit(20),
+        supabase.from('activity').select('*').eq('task_id', task.id).order('created_at', { ascending: false }).limit(30),
       ])
       setComments((c.data as Comment[]) ?? [])
       setActivity((a.data as Activity[]) ?? [])
@@ -51,7 +57,7 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
       .select('*')
       .eq('task_id', task.id)
       .order('created_at', { ascending: false })
-      .limit(20)
+      .limit(30)
     setActivity((data as Activity[]) ?? [])
   }
 
@@ -63,16 +69,6 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
     }
     onChanged()
     return true
-  }
-
-  const changeStatus = async (status: Status) => {
-    const err = await changeTaskStatus(task, status, me)
-    if (err) {
-      alert(err)
-      return
-    }
-    onChanged()
-    reloadActivity()
   }
 
   const changeAssignee = async (assignee_id: string) => {
@@ -125,19 +121,45 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
   const addSubtask = async (e: FormEvent) => {
     e.preventDefault()
     if (!newSub.trim()) return
-    await supabase.from('tasks').insert({
+    const { error } = await supabase.from('tasks').insert({
       project_id: task.project_id,
       parent_id: task.id,
       title: newSub.trim(),
       created_by: me,
     })
+    if (error) alert(error.message)
     setNewSub('')
     onChanged()
   }
 
   const toggleSubtask = async (sub: Task) => {
-    if (!canToggleSubtask(profile, sub, task)) return
-    await supabase.from('tasks').update({ status: sub.status === 'done' ? 'todo' : 'done' }).eq('id', sub.id)
+    const { error } = await supabase.from('tasks').update({ tick_done: !sub.tick_done }).eq('id', sub.id)
+    if (error) alert(error.message)
+    onChanged()
+  }
+
+  const saveSubTitle = async (sub: Task) => {
+    const next = (subEdits[sub.id] ?? sub.title).trim()
+    if (next && next !== sub.title) {
+      const { error } = await supabase.from('tasks').update({ title: next }).eq('id', sub.id)
+      if (error) alert(error.message)
+      onChanged()
+    }
+    setSubEdits((s) => {
+      const { [sub.id]: _, ...rest } = s
+      return rest
+    })
+  }
+
+  const assignSubtask = async (sub: Task, assignee_id: string) => {
+    const { error } = await supabase.from('tasks').update({ assignee_id: assignee_id || null }).eq('id', sub.id)
+    if (error) alert(error.message)
+    onChanged()
+  }
+
+  const removeSubtask = async (sub: Task) => {
+    const { error } = await supabase.from('tasks').delete().eq('id', sub.id)
+    if (error) alert(error.message)
     onChanged()
   }
 
@@ -153,17 +175,20 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
   const activityText = (a: Activity) => {
     const map: Record<string, string> = {
       created: t('act_created'),
-      status: `${t('act_status')} ${a.detail.status ? t(a.detail.status as TKey) : ''}`,
       assigned: `${t('act_assigned')} ${a.detail.name ?? ''}`,
       unassigned: t('act_unassigned'),
       due: `${t('act_due')} ${a.detail.date ?? ''}`,
       priority: `${t('act_priority')} ${a.detail.priority ? t(a.detail.priority as TKey) : ''}`,
       deleted: `${t('act_deleted')} “${a.detail.title ?? ''}”`,
+      tick_done: t('act_tick_done'),
+      untick_done: t('act_untick_done'),
+      checked: t('act_checked'),
+      unchecked: t('act_unchecked'),
     }
     return map[a.action] ?? a.action
   }
 
-  const selectCls =
+  const inputCls =
     'w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400'
 
   return (
@@ -185,27 +210,21 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
         </div>
 
         <div className="space-y-4 p-4">
+          <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+            <TaskTicks task={task} onChanged={() => { onChanged(); reloadActivity() }} />
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${task.status === 'done' ? 'bg-emerald-100 text-emerald-700' : task.tick_done ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+              {task.status === 'done' ? t('done') : task.tick_done ? t('waitingMyCheck') : t('in_progress')}
+            </span>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <label className="block text-xs font-semibold text-slate-500">
-              {t('status')}
-              <select
-                value={task.status}
-                onChange={(e) => changeStatus(e.target.value as Status)}
-                disabled={statuses.length === 0}
-                className={`mt-1 ${selectCls}`}
-              >
-                {(statuses.length ? statuses : [task.status]).map((s) => (
-                  <option key={s} value={s}>{t(s)}</option>
-                ))}
-              </select>
-            </label>
             <label className="block text-xs font-semibold text-slate-500">
               {t('assignee')}
               <select
                 value={task.assignee_id ?? ''}
                 onChange={(e) => changeAssignee(e.target.value)}
                 disabled={!editor}
-                className={`mt-1 ${selectCls}`}
+                className={`mt-1 ${inputCls}`}
               >
                 <option value="">{t('unassigned')}</option>
                 {profiles.map((p) => (
@@ -214,27 +233,26 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
               </select>
             </label>
             <label className="block text-xs font-semibold text-slate-500">
+              {t('priority')}
+              <select
+                value={task.priority}
+                onChange={(e) => changePriority(e.target.value as Priority)}
+                disabled={!editor}
+                className={`mt-1 ${inputCls}`}
+              >
+                <option value="normal">{t('normal')}</option>
+                <option value="urgent">{t('urgent')}</option>
+              </select>
+            </label>
+            <label className="col-span-2 block text-xs font-semibold text-slate-500">
               {t('dueDate')}
               <input
                 type="date"
                 value={task.due_date ?? ''}
                 onChange={(e) => changeDue(e.target.value)}
                 disabled={!editor}
-                className={`mt-1 ${selectCls}`}
+                className={`mt-1 ${inputCls}`}
               />
-            </label>
-            <label className="block text-xs font-semibold text-slate-500">
-              {t('priority')}
-              <select
-                value={task.priority}
-                onChange={(e) => changePriority(e.target.value as Priority)}
-                disabled={!editor}
-                className={`mt-1 ${selectCls}`}
-              >
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>{t(p)}</option>
-                ))}
-              </select>
             </label>
           </div>
 
@@ -247,40 +265,65 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
               disabled={!descEditor}
               rows={3}
               placeholder={descEditor ? t('addDetails') : ''}
-              className={`mt-1 ${selectCls} resize-y`}
+              className={`mt-1 ${inputCls} resize-y`}
             />
           </label>
 
           <div>
             <h3 className="mb-1 text-xs font-semibold text-slate-500">
-              {t('subtasks')} ({subtasks.filter((s) => s.status === 'done').length}/{subtasks.length})
+              {t('subtasks')} ({subtasks.filter((s) => s.tick_done).length}/{subtasks.length})
             </h3>
             <div className="space-y-1">
-              {subtasks.map((sub) => (
-                <div key={sub.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2 py-1.5">
-                  <input
-                    type="checkbox"
-                    checked={sub.status === 'done'}
-                    onChange={() => toggleSubtask(sub)}
-                    disabled={!canToggleSubtask(profile, sub, task)}
-                    className="h-4 w-4 accent-indigo-600"
-                  />
-                  <span className={`flex-1 text-sm ${sub.status === 'done' ? 'text-slate-400 line-through' : ''}`}>
-                    {sub.title}
-                  </span>
-                  {sub.assignee_id && <Avatar name={nameOf(sub.assignee_id)} size={6} />}
-                </div>
-              ))}
+              {subtasks.map((sub) => {
+                const editable = canEditSubtask(profile, sub, task)
+                return (
+                  <div key={sub.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2 py-1.5">
+                    <input
+                      type="checkbox"
+                      checked={sub.tick_done}
+                      onChange={() => toggleSubtask(sub)}
+                      disabled={!editable}
+                      className="h-4 w-4 accent-indigo-600"
+                    />
+                    <input
+                      value={subEdits[sub.id] ?? sub.title}
+                      onChange={(e) => setSubEdits((s) => ({ ...s, [sub.id]: e.target.value }))}
+                      onBlur={() => saveSubTitle(sub)}
+                      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                      disabled={!editable}
+                      className={`flex-1 border-none bg-transparent text-sm focus:outline-none ${sub.tick_done ? 'text-slate-400 line-through' : ''}`}
+                    />
+                    <select
+                      value={sub.assignee_id ?? ''}
+                      onChange={(e) => assignSubtask(sub, e.target.value)}
+                      disabled={!editable}
+                      className="max-w-24 rounded-md border border-slate-200 bg-white px-1 py-0.5 text-xs text-slate-500 focus:outline-none"
+                    >
+                      <option value="">—</option>
+                      {profiles.map((p) => (
+                        <option key={p.id} value={p.id}>{p.full_name}</option>
+                      ))}
+                    </select>
+                    {editable && (
+                      <button onClick={() => removeSubtask(sub)} className="text-slate-300 hover:text-red-500">✕</button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-            <form onSubmit={addSubtask}>
-              <input
-                value={newSub}
-                onChange={(e) => setNewSub(e.target.value)}
-                placeholder={`+ ${t('addSubtask')}`}
-                className="mt-1 w-full rounded-lg border border-dashed border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
-              />
-            </form>
+            {canAddSubtask(profile, task) && (
+              <form onSubmit={addSubtask}>
+                <input
+                  value={newSub}
+                  onChange={(e) => setNewSub(e.target.value)}
+                  placeholder={`+ ${t('addSubtask')}`}
+                  className="mt-1 w-full rounded-lg border border-dashed border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+                />
+              </form>
+            )}
           </div>
+
+          <FilesSection projectId={task.project_id} taskId={task.id} />
 
           <div>
             <h3 className="mb-1 text-xs font-semibold text-slate-500">{t('comments')} ({comments.length})</h3>
@@ -310,9 +353,11 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
             </form>
           </div>
 
-          <div>
-            <h3 className="mb-1 text-xs font-semibold text-slate-500">{t('activityLog')}</h3>
-            <ul className="space-y-1">
+          <details>
+            <summary className="cursor-pointer text-xs font-semibold text-slate-500 select-none">
+              {t('activityLog')} ({activity.length}) ▸
+            </summary>
+            <ul className="mt-2 space-y-1">
               {activity.map((a) => (
                 <li key={a.id} className="text-xs text-slate-400">
                   <b className="text-slate-500">{nameOf(a.actor_id)}</b> {activityText(a)}
@@ -320,7 +365,7 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
                 </li>
               ))}
             </ul>
-          </div>
+          </details>
 
           {canDelete(profile, task) && (
             <button onClick={removeTask} className="text-xs text-red-500 hover:underline">

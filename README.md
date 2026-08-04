@@ -1,96 +1,86 @@
 # Assignment Office 📋
 
-A central work-assignment platform for a small team — assign tasks, track progress,
-review completed work, and collaborate with comments. Thai ⇄ English switchable UI.
+A central work-assignment platform for a small team — the admin assigns work,
+the team executes and ticks it done, the admin checks and approves. Thai ⇄
+English switchable UI, built for phone and desktop.
 
-## Features (MVP)
+## How work flows (spec v2)
 
 - **Hierarchy:** Projects → Tasks → Subtasks (checklist)
-- **Task lifecycle:** To Do → In Progress → In Review → Done (+ Blocked, Cancelled)
-  - The **task creator reviews** work submitted as In Review — approve to Done or send back
-- Assignee, due date (overdue highlighting), priority (Urgent/High/Normal/Low)
-- **My Tasks** home: overdue / due today / upcoming, plus "Waiting for my review"
-- **Projects** overview with progress bars; project view grouped by status
-- Comments and per-task activity log
-- In-app **notifications** with realtime updates (assigned / commented / review / returned / approved)
-- Thai / English UI toggle (auto-detects browser language)
-- Open sign-up: share the URL, the team registers; the **first account becomes admin**
+- **Dual-tick completion — status is derived, never picked:**
+  - `tick_done` (work tick) — the assignee ticks when the work is finished
+  - `tick_checked` (approval tick) — the task creator/admin ticks after checking
+  - Both ticks → task is **Done** automatically; anything else is **In Progress**
+  - Self-tasks (creator = assignee) complete with the single work tick
+  - Ticked-but-unchecked tasks are highlighted amber ("waiting for check")
+- **Statuses:** In Progress / Done only. **Priorities:** Normal / Urgent.
+- **Creation is admin-only** for projects and tasks; members can add subtasks
+  to tasks assigned to them, comment, and upload files.
+- **Ordering:** project pages have one shared order (dragged by admin/project
+  creator); My Tasks has a private per-user order. Both drag-and-drop.
+- **Files:** attachments on projects and on tasks (Supabase Storage, 20 MB/file).
+- **Routines:** admin-defined recurring work per person (days of week or days
+  of month) with per-day completion ticks and visible history.
+- **Calendar:** month view of task due dates (dot colored by project, with
+  assignee) and routine occurrences (🔁, neutral style), with show/hide
+  filters and a project color legend. Tap a day for its item list (mobile).
+- **Accounts:** username + password created by the admin on the Team page —
+  no emails needed. First-ever account became admin. Roles: Admin / Member.
+- In-app realtime notifications: assigned / commented / finished-awaiting-check
+  / returned / approved.
 
 ### Permission model (enforced in the database, not just the UI)
 
-| Who | Can |
-|---|---|
-| Anyone | Create tasks/subtasks anywhere, comment |
-| Assignee | Change status (not Done/Cancelled), edit description, tick subtasks |
-| Task creator | Everything incl. reassign, due date, priority, approve/cancel, delete |
-| Admin | Everything, everywhere |
-
-Deletions are restricted to creator/admin and logged. Assignees cannot approve
-their own work or move their own deadlines — by design.
+| Action | Admin | Member |
+|---|---|---|
+| See projects/tasks/files/routines/calendar | ✅ | ✅ |
+| Create projects & tasks | ✅ | ❌ |
+| Add subtasks / comment / upload files | ✅ | ✅ (subtasks on own tasks) |
+| Work tick | ✅ | own assignments |
+| Approval tick | ✅ any | only tasks they created |
+| Edit task fields / reassign / delete | ✅ any | only tasks they created |
+| Reorder project list | ✅ | only projects they created |
+| Reorder My Tasks | own list | own list |
+| Create/edit routines | ✅ | tick own occurrences only |
+| Team page (accounts, roles) | ✅ | ❌ |
 
 ## Architecture
 
-- **Frontend:** React + TypeScript + Vite + Tailwind CSS → deployed on **Cloudflare Pages**
-- **Backend:** **Supabase** (auth, Postgres, realtime) — lives in the shared *Marketing*
-  Supabase project, isolated inside a dedicated **`assignment_office` schema**
-- All permissions enforced via Row Level Security + a field-level trigger
-  (`supabase/migrations/0001_init.sql`)
+- **Frontend:** React + TypeScript + Vite + Tailwind CSS + dnd-kit
+  → deployed on **Cloudflare Workers** (static assets, `wrangler.jsonc`)
+- **Backend:** **Supabase** — lives in the shared *Marketing* project
+  (`qtpwrwapbefczvqdfzes`), isolated inside the **`assignment_office`** schema
+- Storage bucket `attachments` (private, signed URLs)
+- Edge function `create-user` — admin-only account creation via service role
+- All rules enforced via RLS + field-level triggers
+  (see `supabase/migrations/`)
 
 ## Setup
 
-### 1. Supabase (already applied)
+### Supabase (already applied)
 
-The schema in `supabase/migrations/0001_init.sql` has been applied to the
-Marketing project (`qtpwrwapbefczvqdfzes`). One manual step is required once:
+Migrations in `supabase/migrations/` are applied to the Marketing project.
+One-time manual steps already done: expose `assignment_office` under
+Dashboard → Settings → API → "Exposed schemas"; disable public sign-ups
+(Authentication → Sign In / Providers).
 
-> **Dashboard → project *Marketing* → Settings → API → "Exposed schemas" → add `assignment_office`**
-
-Without this, the API cannot reach the schema and the app will show errors.
-
-### 2. Local development
+### Local development
 
 ```bash
-cp .env.example .env   # fill in the values below
+cp .env.example .env   # VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
 npm install
 npm run dev
 ```
 
-`.env`:
+### Deploy (Cloudflare Workers)
 
-```
-VITE_SUPABASE_URL=https://qtpwrwapbefczvqdfzes.supabase.co
-VITE_SUPABASE_ANON_KEY=<the project's publishable (anon) key>
-```
+Pushing to the production branch auto-builds via the connected Workers app
+(`assignment-office`). Build command `npm run build`, deploy command
+`npx wrangler deploy`; the two `VITE_*` variables are set as build variables
+in the Cloudflare project settings.
 
-Find the key in Dashboard → Settings → API Keys (`sb_publishable_...`).
+## Roadmap ideas
 
-### 3. Deploy to Cloudflare (Workers with static assets)
-
-The repo contains `wrangler.jsonc`, which serves the Vite build (`dist/`) as a
-single-page app via Cloudflare Workers static assets.
-
-1. Cloudflare Dashboard → **Workers & Pages → Create application →
-   Continue with GitHub** → select this repository
-2. Build command: `npm run build` · Deploy command: `npx wrangler deploy`
-3. Under **Advanced settings → Build variables**, add
-   `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
-   (they are baked in at build time)
-4. Deploy
-
-(If you ever use the classic Cloudflare **Pages** flow instead, set build
-output to `dist` and add a `public/_redirects` file containing
-`/* /index.html 200` — do not keep that file for Workers deploys, as the
-two SPA-fallback mechanisms conflict.)
-
-### 4. First run
-
-1. Open the deployed URL, create the first account — it becomes **admin**
-2. Share the URL with the team; they sign up themselves
-3. Create the first project and start assigning
-
-## Roadmap (agreed phases)
-
-- **Phase 2:** Kanban board, calendar view, dashboard, attachments,
-  LINE notifications (via LINE Official Account + Messaging API — daily digest
-  + instant pushes for important events), recurring tasks
-- **Phase 3:** project templates, reports, workload view, task dependencies
+LINE notifications (LINE Official Account + Messaging API: morning digest +
+urgent pushes), dashboard/reports, project templates, task dependencies,
+password self-service.

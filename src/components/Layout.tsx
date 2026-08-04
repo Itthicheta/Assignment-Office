@@ -22,6 +22,8 @@ export default function Layout({ children }: { children: ReactNode }) {
         <nav className="ml-4 hidden items-center gap-1 sm:flex">
           <NavLink to="/" end className={navCls}>{t('myTasks')}</NavLink>
           <NavLink to="/projects" className={navCls}>{t('projects')}</NavLink>
+          <NavLink to="/routines" className={navCls}>{t('routines')}</NavLink>
+          <NavLink to="/calendar" className={navCls}>{t('calendar')}</NavLink>
           {profile?.role === 'admin' && <NavLink to="/team" className={navCls}>{t('team')}</NavLink>}
         </nav>
         <div className="ml-auto flex items-center gap-3">
@@ -45,17 +47,25 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {/* mobile bottom nav */}
       <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-slate-200 bg-white sm:hidden">
-        <NavLink to="/" end className={({ isActive }) => `flex-1 py-3 text-center text-sm font-medium ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>
-          {t('myTasks')}
-        </NavLink>
-        <NavLink to="/projects" className={({ isActive }) => `flex-1 py-3 text-center text-sm font-medium ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>
-          {t('projects')}
-        </NavLink>
-        {profile?.role === 'admin' && (
-          <NavLink to="/team" className={({ isActive }) => `flex-1 py-3 text-center text-sm font-medium ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>
-            {t('team')}
+        {[
+          { to: '/', label: t('myTasks'), icon: '🏠', end: true },
+          { to: '/projects', label: t('projects'), icon: '📁' },
+          { to: '/routines', label: t('routines'), icon: '🔁' },
+          { to: '/calendar', label: t('calendar'), icon: '📅' },
+          ...(profile?.role === 'admin' ? [{ to: '/team', label: t('team'), icon: '👥' }] : []),
+        ].map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              `flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${isActive ? 'text-indigo-600' : 'text-slate-500'}`
+            }
+          >
+            <span className="text-base leading-none">{item.icon}</span>
+            {item.label}
           </NavLink>
-        )}
+        ))}
       </nav>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-20 sm:pb-6">{children}</main>

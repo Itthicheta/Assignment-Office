@@ -7,6 +7,8 @@ const dict = {
   appName: { en: 'Assignment Office', th: 'Assignment Office' },
   myTasks: { en: 'My Tasks', th: 'งานของฉัน' },
   projects: { en: 'Projects', th: 'โปรเจกต์' },
+  routines: { en: 'Routine', th: 'งานประจำ' },
+  calendar: { en: 'Calendar', th: 'ปฏิทิน' },
   notifications: { en: 'Notifications', th: 'การแจ้งเตือน' },
   signOut: { en: 'Sign out', th: 'ออกจากระบบ' },
   team: { en: 'Team', th: 'ทีม' },
@@ -31,27 +33,20 @@ const dict = {
     th: 'มอบหมายงาน ติดตามความคืบหน้า ทำงานให้เสร็จ — ไปด้วยกัน',
   },
 
-  // Statuses
-  todo: { en: 'To Do', th: 'รอดำเนินการ' },
+  // Statuses & ticks
   in_progress: { en: 'In Progress', th: 'กำลังทำ' },
-  in_review: { en: 'In Review', th: 'รอตรวจ' },
-  blocked: { en: 'Blocked', th: 'ติดปัญหา' },
   done: { en: 'Done', th: 'เสร็จแล้ว' },
-  cancelled: { en: 'Cancelled', th: 'ยกเลิก' },
+  tickWork: { en: 'Work done', th: 'ทำเสร็จ' },
+  tickCheck: { en: 'Checked', th: 'ตรวจแล้ว' },
+  waitingMyCheck: { en: 'Waiting for my check', th: 'รอฉันตรวจ' },
 
   // Priorities
-  urgent: { en: 'Urgent', th: 'ด่วนมาก' },
-  high: { en: 'High', th: 'สูง' },
+  urgent: { en: 'Urgent', th: 'ด่วน' },
   normal: { en: 'Normal', th: 'ปกติ' },
-  low: { en: 'Low', th: 'ต่ำ' },
 
   // My Tasks page
-  overdue: { en: 'Overdue', th: 'เลยกำหนด' },
-  dueToday: { en: 'Due today', th: 'ครบกำหนดวันนี้' },
-  upcoming: { en: 'Upcoming', th: 'กำลังจะถึงกำหนด' },
-  noDueDate: { en: 'No due date', th: 'ไม่มีกำหนดส่ง' },
-  waitingMyReview: { en: 'Waiting for my review', th: 'รอฉันตรวจ' },
   allCaughtUp: { en: 'All caught up — no open tasks assigned to you.', th: 'เยี่ยม! ไม่มีงานค้างที่มอบหมายให้คุณ' },
+  allProjects: { en: 'All projects', th: 'ทุกโปรเจกต์' },
 
   // Projects
   newProject: { en: 'New project', th: 'สร้างโปรเจกต์' },
@@ -59,7 +54,7 @@ const dict = {
   projectDescription: { en: 'Description (optional)', th: 'รายละเอียด (ไม่บังคับ)' },
   create: { en: 'Create', th: 'สร้าง' },
   cancel: { en: 'Cancel', th: 'ยกเลิก' },
-  noProjects: { en: 'No projects yet. Create the first one!', th: 'ยังไม่มีโปรเจกต์ สร้างอันแรกเลย!' },
+  noProjects: { en: 'No projects yet.', th: 'ยังไม่มีโปรเจกต์' },
   tasksDone: { en: 'done', th: 'เสร็จ' },
 
   // Project detail / tasks
@@ -69,7 +64,6 @@ const dict = {
   unassigned: { en: 'Unassigned', th: 'ยังไม่มอบหมาย' },
   dueDate: { en: 'Due date', th: 'กำหนดส่ง' },
   priority: { en: 'Priority', th: 'ความสำคัญ' },
-  status: { en: 'Status', th: 'สถานะ' },
   description: { en: 'Description', th: 'รายละเอียด' },
   subtasks: { en: 'Subtasks', th: 'งานย่อย' },
   comments: { en: 'Comments', th: 'ความคิดเห็น' },
@@ -78,26 +72,53 @@ const dict = {
   activityLog: { en: 'Activity', th: 'ประวัติ' },
   deleteTask: { en: 'Delete task', th: 'ลบงาน' },
   confirmDelete: { en: 'Delete this task and its subtasks?', th: 'ลบงานนี้และงานย่อยทั้งหมด?' },
-  noTasks: { en: 'No tasks yet — add the first one above.', th: 'ยังไม่มีงาน เพิ่มงานแรกได้ที่ด้านบน' },
+  noTasks: { en: 'No tasks yet.', th: 'ยังไม่มีงาน' },
   addDetails: { en: 'Add details…', th: 'เพิ่มรายละเอียด…' },
+
+  // Files
+  files: { en: 'Files', th: 'ไฟล์' },
+  uploadFile: { en: 'Upload file', th: 'อัปโหลดไฟล์' },
+  uploading: { en: 'Uploading…', th: 'กำลังอัปโหลด…' },
+  confirmDeleteFile: { en: 'Delete this file?', th: 'ลบไฟล์นี้?' },
 
   // Activity actions
   act_created: { en: 'created this task', th: 'สร้างงานนี้' },
-  act_status: { en: 'changed status to', th: 'เปลี่ยนสถานะเป็น' },
   act_assigned: { en: 'assigned to', th: 'มอบหมายให้' },
   act_unassigned: { en: 'removed the assignee', th: 'ยกเลิกการมอบหมาย' },
   act_due: { en: 'set due date to', th: 'ตั้งกำหนดส่งเป็น' },
   act_priority: { en: 'set priority to', th: 'ตั้งความสำคัญเป็น' },
   act_deleted: { en: 'deleted task', th: 'ลบงาน' },
+  act_tick_done: { en: 'marked the work done', th: 'ทำงานเสร็จแล้ว' },
+  act_untick_done: { en: 'reopened the work', th: 'เปิดงานใหม่อีกครั้ง' },
+  act_checked: { en: 'checked and approved', th: 'ตรวจผ่านแล้ว' },
+  act_unchecked: { en: 'removed the approval', th: 'ยกเลิกการอนุมัติ' },
 
   // Notifications
   notif_assigned: { en: 'assigned you a task', th: 'มอบหมายงานให้คุณ' },
   notif_comment: { en: 'commented on your task', th: 'แสดงความคิดเห็นในงานของคุณ' },
-  notif_review: { en: 'submitted a task for your review', th: 'ส่งงานให้คุณตรวจ' },
+  notif_review: { en: 'finished a task — waiting for your check', th: 'ทำงานเสร็จแล้ว รอคุณตรวจ' },
   notif_returned: { en: 'returned your task with feedback', th: 'ส่งงานกลับมาให้คุณแก้ไข' },
-  notif_done: { en: 'approved your task', th: 'อนุมัติงานของคุณแล้ว' },
+  notif_done: { en: 'checked and approved your task', th: 'ตรวจงานของคุณผ่านแล้ว' },
   markAllRead: { en: 'Mark all as read', th: 'อ่านทั้งหมดแล้ว' },
   noNotifications: { en: 'No notifications', th: 'ไม่มีการแจ้งเตือน' },
+
+  // Routines
+  newRoutine: { en: 'New routine', th: 'เพิ่มงานประจำ' },
+  routineTitle: { en: 'Routine name', th: 'ชื่องานประจำ' },
+  repeatWeekly: { en: 'Weekly — pick days of the week', th: 'รายสัปดาห์ — เลือกวัน' },
+  repeatMonthly: { en: 'Monthly — pick days of the month', th: 'รายเดือน — เลือกวันที่' },
+  active: { en: 'Active', th: 'ใช้งาน' },
+  paused: { en: 'Paused', th: 'พักไว้' },
+  doneToday: { en: 'Done today', th: 'เสร็จวันนี้' },
+  notDueToday: { en: 'Not due today', th: 'วันนี้ไม่มีกำหนด' },
+  history: { en: 'History', th: 'ประวัติ' },
+  noRoutines: { en: 'No routines yet.', th: 'ยังไม่มีงานประจำ' },
+  confirmDeleteRoutine: { en: 'Delete this routine and its history?', th: 'ลบงานประจำนี้และประวัติทั้งหมด?' },
+
+  // Calendar
+  showTasks: { en: 'Tasks', th: 'งาน' },
+  showRoutines: { en: 'Routines', th: 'งานประจำ' },
+  today: { en: 'Today', th: 'วันนี้' },
 
   loading: { en: 'Loading…', th: 'กำลังโหลด…' },
 } as const
