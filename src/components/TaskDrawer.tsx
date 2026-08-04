@@ -184,6 +184,8 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
       untick_done: t('act_untick_done'),
       checked: t('act_checked'),
       unchecked: t('act_unchecked'),
+      // legacy entries from the pre-tick status model
+      status: `→ ${a.detail.status ? t(a.detail.status as TKey) : ''}`,
     }
     return map[a.action] ?? a.action
   }

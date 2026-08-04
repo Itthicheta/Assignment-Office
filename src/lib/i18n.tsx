@@ -143,7 +143,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('lang', l)
     setLangState(l)
   }
-  const t = (key: TKey) => dict[key][lang]
+  // Tolerant lookup: old data may reference keys that no longer exist
+  // (e.g. removed statuses/priorities in activity history) — fall back to
+  // the raw key instead of crashing the page.
+  const t = (key: TKey) => dict[key]?.[lang] ?? String(key)
   return <I18nContext.Provider value={{ lang, setLang, t }}>{children}</I18nContext.Provider>
 }
 
