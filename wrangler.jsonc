@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "assignment-office",
+  "compatibility_date": "2026-08-04",
+  // Static-assets-only Worker: serve the Vite build output as an SPA.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

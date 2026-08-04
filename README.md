@@ -64,17 +64,21 @@ VITE_SUPABASE_ANON_KEY=<the project's publishable (anon) key>
 
 Find the key in Dashboard → Settings → API Keys (`sb_publishable_...`).
 
-### 3. Deploy to Cloudflare Pages
+### 3. Deploy to Cloudflare (Workers with static assets)
 
-1. Cloudflare Dashboard → **Workers & Pages → Create → Pages → Connect to Git**
-2. Select this repository and branch
-3. Build settings:
-   - Build command: `npm run build`
-   - Build output directory: `dist`
-4. Environment variables: add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
-5. Deploy — then add a **`_redirects`** rule is not needed; SPA fallback is
-   handled by Pages automatically for single-page apps (404 → `index.html`
-   via the included `public/_redirects`).
+The repo contains `wrangler.jsonc`, which serves the Vite build (`dist/`) as a
+single-page app via Cloudflare Workers static assets.
+
+1. Cloudflare Dashboard → **Workers & Pages → Create application →
+   Continue with GitHub** → select this repository
+2. Build command: `npm run build` · Deploy command: `npx wrangler deploy`
+3. Under **Advanced settings → Build variables**, add
+   `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+   (they are baked in at build time)
+4. Deploy
+
+The classic Cloudflare **Pages** flow also works (build output `dist`,
+SPA fallback provided by `public/_redirects`).
 
 ### 4. First run
 
