@@ -35,6 +35,7 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [subEdits, setSubEdits] = useState<Record<string, string>>({})
+  const [editingComment, setEditingComment] = useState<{ id: string; body: string } | null>(null)
 
   const me = session!.user.id
   const isSub = !!task.parent_id
@@ -127,11 +128,13 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
   const addSubtask = async (e: FormEvent) => {
     e.preventDefault()
     if (!newSub.trim()) return
+    // new subtasks auto-assign to their creator
     const { error } = await supabase.from('tasks').insert({
       project_id: task.project_id,
       parent_id: task.id,
       title: newSub.trim(),
       created_by: me,
+      assignee_id: me,
     })
     if (error) alert(error.message)
     setNewSub('')
@@ -224,20 +227,20 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
             {isSub && parent && (
               <span className="truncate text-xs text-slate-400">↳ {parent.title}</span>
             )}
-            <span className="ml-auto text-xs whitespace-nowrap text-slate-400">
+            <span className="ml-auto flex items-center gap-2 text-xs whitespace-nowrap text-slate-400">
               {t('createdBy')}: {nameOf(task.created_by)}
+              <ApproveControl task={task} onChanged={() => { onChanged(); reloadActivity() }} />
             </span>
           </div>
         </div>
 
         <div className="space-y-4 p-4">
-          <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
+          {/* ① status & fields */}
+          <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+          <div className="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2.5">
             <TaskTicks task={task} parent={parent} onChanged={() => { onChanged(); reloadActivity() }} />
-            <span className="flex items-center gap-2">
-              <ApproveControl task={task} onChanged={() => { onChanged(); reloadActivity() }} />
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${task.status === 'done' ? 'bg-emerald-100 text-emerald-700' : task.tick_done ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                {task.status === 'done' ? t('done') : task.tick_done ? t('waitingMyCheck') : t('in_progress')}
-              </span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${task.status === 'done' ? 'bg-emerald-100 text-emerald-700' : task.tick_done ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+              {task.status === 'done' ? t('done') : task.tick_done ? t('waitingMyCheck') : t('in_progress')}
             </span>
           </div>
 
@@ -295,7 +298,10 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
               className={`mt-1 ${inputCls} resize-y`}
             />
           </label>
+          </div>
 
+          {/* ② subtasks & files */}
+          <div className="space-y-3 rounded-xl border border-slate-100 bg-indigo-50/40 p-3">
           {!isSub && (
             <div>
               <h3 className="mb-1 text-xs font-semibold text-slate-500">
@@ -303,8 +309,7 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
               </h3>
               <div className="space-y-1">
                 {subtasks.map((sub) => (
-                  <div key={sub.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2 py-1.5">
-                    <TaskTicks task={sub} parent={task} onChanged={onChanged} />
+                  <div key={sub.id} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-2 py-1.5">
                     <input
                       value={subEdits[sub.id] ?? sub.title}
                       onChange={(e) => setSubEdits((s) => ({ ...s, [sub.id]: e.target.value }))}
@@ -313,6 +318,7 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
                       disabled={!subManager}
                       className={`flex-1 border-none bg-transparent text-sm focus:outline-none ${sub.status === 'done' ? 'text-slate-400 line-through' : ''}`}
                     />
+                    <TaskTicks task={sub} parent={task} onChanged={onChanged} />
                     <select
                       value={sub.assignee_id ?? ''}
                       onChange={(e) => assignSubtask(sub, e.target.value)}
@@ -344,18 +350,60 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
           )}
 
           <FilesSection projectId={task.project_id} taskId={task.id} />
+          </div>
 
+          {/* ③ comments & activity */}
+          <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
           <div>
             <h3 className="mb-1 text-xs font-semibold text-slate-500">{t('comments')} ({comments.length})</h3>
             <div className="space-y-2">
               {comments.map((c) => (
                 <div key={c.id} className="flex items-start gap-2">
                   <Avatar name={nameOf(c.author_id)} size={6} />
-                  <div className="flex-1 rounded-lg bg-slate-50 px-3 py-2">
-                    <p className="text-xs font-semibold">{nameOf(c.author_id)}
+                  <div className="flex-1 rounded-lg bg-white px-3 py-2">
+                    <p className="flex items-center text-xs font-semibold">
+                      {nameOf(c.author_id)}
                       <span className="ml-2 font-normal text-slate-400">{new Date(c.created_at).toLocaleString()}</span>
+                      {c.author_id === me && (
+                        <span className="ml-auto flex gap-2">
+                          <button
+                            onClick={() => setEditingComment({ id: c.id, body: c.body })}
+                            className="font-normal text-slate-300 hover:text-indigo-600"
+                          >✏️</button>
+                          <button
+                            onClick={async () => {
+                              await supabase.from('comments').delete().eq('id', c.id)
+                              setComments((cs) => cs.filter((x) => x.id !== c.id))
+                            }}
+                            className="font-normal text-slate-300 hover:text-red-500"
+                          >✕</button>
+                        </span>
+                      )}
                     </p>
-                    <p className="text-sm whitespace-pre-wrap">{c.body}</p>
+                    {editingComment?.id === c.id ? (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault()
+                          const body = editingComment.body.trim()
+                          if (body) {
+                            await supabase.from('comments').update({ body }).eq('id', c.id)
+                            setComments((cs) => cs.map((x) => (x.id === c.id ? { ...x, body } : x)))
+                          }
+                          setEditingComment(null)
+                        }}
+                        className="mt-1 flex gap-2"
+                      >
+                        <input
+                          autoFocus
+                          value={editingComment.body}
+                          onChange={(e) => setEditingComment({ id: c.id, body: e.target.value })}
+                          className="flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none"
+                        />
+                        <button className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-semibold text-white">{t('send')}</button>
+                      </form>
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap">{c.body}</p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -386,6 +434,7 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
               ))}
             </ul>
           </details>
+          </div>
 
           {canDelete(profile, task, parent) && (
             <button onClick={removeTask} className="text-xs text-red-500 hover:underline">

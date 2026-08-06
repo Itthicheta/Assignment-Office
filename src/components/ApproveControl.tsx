@@ -8,10 +8,18 @@ import type { Task } from '../lib/types'
 // Admin sees a tickable box; others see an amber "pending" chip until
 // approved (approved = clean row, no badge — most tasks are approved).
 export default function ApproveControl({ task, onChanged }: { task: Task; onChanged: () => void }) {
-  const { session, profile } = useAuth()
+  const { session, profile, profiles } = useAuth()
   const { t } = useI18n()
 
   if (task.parent_id) return null
+
+  // Admin-created tasks are locked by design — show a static grey mark,
+  // nothing to tick or untick.
+  if (profiles.find((p) => p.id === task.created_by)?.role === 'admin') {
+    return (
+      <span title={t('approvedLock')} className="text-xs text-slate-300 select-none">✓🔒</span>
+    )
+  }
 
   if (canApprove(profile)) {
     return (

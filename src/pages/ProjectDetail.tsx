@@ -71,6 +71,7 @@ function TaskRow({
   onOpenSub,
   onChanged,
   onAssign,
+  onAddSub,
 }: {
   task: Task
   subtasks: Task[]
@@ -82,7 +83,11 @@ function TaskRow({
   onOpenSub: (sub: Task) => void
   onChanged: () => void
   onAssign: (task: Task, assigneeId: string) => void
+  onAddSub: (parent: Task, title: string) => void
 }) {
+  const { profile } = useAuth()
+  const { t } = useI18n()
+  const [newSub, setNewSub] = useState('')
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     disabled: !draggable,
@@ -114,10 +119,10 @@ function TaskRow({
               e.stopPropagation()
               onToggleExpand()
             }}
-            className="flex items-center gap-0.5 text-xs text-slate-400 hover:text-slate-600"
+            className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 text-sm font-semibold text-indigo-600 hover:bg-indigo-100"
           >
-            <span className={`inline-block transition-transform ${expanded ? 'rotate-90' : ''}`}>▸</span>
-            {subtasks.filter((s) => s.status === 'done').length}/{subtasks.length}
+            <span className={`inline-block text-base leading-none transition-transform ${expanded ? 'rotate-90' : ''}`}>▸</span>
+            <span className="text-xs">{subtasks.filter((s) => s.status === 'done').length}/{subtasks.length}</span>
           </button>
         )}
         <span className="min-w-0 flex-1">
@@ -136,7 +141,7 @@ function TaskRow({
         <ApproveControl task={task} onChanged={onChanged} />
       </div>
 
-      {expanded && subtasks.length > 0 && (
+      {expanded && (
         <div className="mt-1 ml-8 space-y-1">
           {subtasks.map((sub) => (
             <div
@@ -152,6 +157,24 @@ function TaskRow({
               <AssigneeSelect task={sub} parent={task} profiles={profiles} onAssign={(a) => onAssign(sub, a)} />
             </div>
           ))}
+          {canManageSubtasks(profile, task) && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (newSub.trim()) {
+                  onAddSub(task, newSub.trim())
+                  setNewSub('')
+                }
+              }}
+            >
+              <input
+                value={newSub}
+                onChange={(e) => setNewSub(e.target.value)}
+                placeholder={`+ ${t('addSubtask')}`}
+                className="w-full rounded-lg border border-dashed border-indigo-200 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+              />
+            </form>
+          )}
         </div>
       )}
     </div>
@@ -249,6 +272,19 @@ export default function ProjectDetail() {
     load()
   }
 
+  const addSub = async (parentTask: Task, title: string) => {
+    // new subtasks auto-assign to their creator
+    const { error } = await supabase.from('tasks').insert({
+      project_id: id,
+      parent_id: parentTask.id,
+      title,
+      created_by: session!.user.id,
+      assignee_id: session!.user.id,
+    })
+    if (error) alert(error.message)
+    load()
+  }
+
   const onDragEnd = async (e: DragEndEvent) => {
     const { active, over } = e
     if (!over || active.id === over.id) return
@@ -315,6 +351,7 @@ export default function ProjectDetail() {
       onOpenSub={(sub) => setParams({ task: sub.id })}
       onChanged={load}
       onAssign={assignTask}
+      onAddSub={addSub}
     />
   )
 

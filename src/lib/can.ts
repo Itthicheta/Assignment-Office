@@ -32,23 +32,19 @@ export const canEditDescription = (p: Profile | null, t: Task, parent?: Task | n
   return canEditFields(p, t) || t.assignee_id === p.id
 }
 
-// Work tick
-export const canTickDone = (p: Profile | null, t: Task, parent?: Task | null) => {
+// Done tick: strictly the assignee (+admin), tasks and subtasks alike
+export const canTickDone = (p: Profile | null, t: Task, _parent?: Task | null) => {
   if (!p) return false
-  if (t.parent_id) {
-    if (canManageSubtasks(p, parent!)) return true
-    return t.assignee_id === p.id && !t.tick_checked
-  }
-  if (canEditFields(p, t)) return true
+  if (isAdmin(p)) return true
   return t.assignee_id === p.id && !t.tick_checked
 }
 
-// Approval tick: creator/admin (top-level) or main-task assignee/admin (subtask),
-// only after the work tick, and never on self-assigned items
+// Checked tick: tasks → admin only (every task needs it, even self-tasks);
+// subtasks → main task's assignee + admin (self-assigned subtasks skip it)
 export const canTickChecked = (p: Profile | null, t: Task, parent?: Task | null) => {
-  if (!p || !t.tick_done || isSelfTask(t)) return false
-  if (t.parent_id) return canManageSubtasks(p, parent!)
-  return canEditFields(p, t)
+  if (!p || !t.tick_done) return false
+  if (t.parent_id) return !isSelfTask(t) && canManageSubtasks(p, parent!)
+  return isAdmin(p)
 }
 
 // Legitimacy approval of member-created tasks: admin only

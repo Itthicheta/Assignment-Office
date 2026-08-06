@@ -2,9 +2,15 @@ import { supabase } from './supabase'
 import { logActivity, notify } from './notify'
 import type { Task } from './types'
 
-// Toggle the assignee's work tick. Same side effects everywhere it happens.
-// Returns an error message, or null on success.
-export async function setTickDone(task: Task, value: boolean, actorId: string): Promise<string | null> {
+// Toggle the assignee's Done tick. checkerIds = who reviews this item
+// (admins for tasks, the main task's assignee for subtasks) — they get
+// notified that work awaits their Checked tick.
+export async function setTickDone(
+  task: Task,
+  value: boolean,
+  actorId: string,
+  checkerIds: (string | null | undefined)[] = [],
+): Promise<string | null> {
   const { error } = await supabase.from('tasks').update({ tick_done: value }).eq('id', task.id)
   if (error) return error.message
   await logActivity({
@@ -13,8 +19,10 @@ export async function setTickDone(task: Task, value: boolean, actorId: string): 
     actorId,
     action: value ? 'tick_done' : 'untick_done',
   })
-  if (value && actorId !== task.created_by) {
-    await notify({ userId: task.created_by, actorId, taskId: task.id, type: 'review' })
+  if (value) {
+    for (const uid of new Set(checkerIds)) {
+      await notify({ userId: uid, actorId, taskId: task.id, type: 'review' })
+    }
   }
   return null
 }

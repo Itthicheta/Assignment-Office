@@ -16,12 +16,16 @@ export default function TaskTicks({
   parent?: Task | null
   onChanged: () => void
 }) {
-  const { session, profile } = useAuth()
+  const { session, profile, profiles } = useAuth()
   const { t } = useI18n()
   const me = session!.user.id
 
   const toggleDone = async () => {
-    const err = await setTickDone(task, !task.tick_done, me)
+    // notify the checkers: admins for tasks, main-task assignee for subtasks
+    const checkers = task.parent_id
+      ? [parent?.assignee_id]
+      : profiles.filter((p) => p.role === 'admin').map((p) => p.id)
+    const err = await setTickDone(task, !task.tick_done, me, checkers.filter((x) => x && x !== me))
     if (err) alert(err)
     onChanged()
   }
@@ -47,7 +51,7 @@ export default function TaskTicks({
         />
         <span className="hidden text-slate-500 lg:inline">{t('tickWork')}</span>
       </label>
-      {!isSelfTask(task) && (
+      {!(task.parent_id && isSelfTask(task)) && (
         <label
           title={t('tickCheck')}
           className={`flex items-center gap-1 text-xs ${canTickChecked(profile, task, parent) ? 'cursor-pointer' : 'opacity-50'}`}

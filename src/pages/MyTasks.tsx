@@ -65,7 +65,7 @@ function SortableRow({ task, myPos }: { task: TaskWithProject; myPos: number }) 
 }
 
 export default function MyTasks() {
-  const { session, profiles } = useAuth()
+  const { session, profile, profiles } = useAuth()
   const { t } = useI18n()
   const [mine, setMine] = useState<TaskWithProject[]>([])
   const [reviews, setReviews] = useState<TaskWithProject[]>([])
@@ -88,20 +88,12 @@ export default function MyTasks() {
 
   const load = async () => {
     if (!session) return
-    const [a, b, o] = await Promise.all([
+    const [a, o] = await Promise.all([
       supabase
         .from('tasks')
         .select('*, project:projects(id, name, color, created_at)')
         .eq('assignee_id', session.user.id)
         .eq('status', 'in_progress'),
-      supabase
-        .from('tasks')
-        .select('*, project:projects(id, name, color, created_at)')
-        .eq('created_by', session.user.id)
-        .eq('status', 'in_progress')
-        .eq('tick_done', true)
-        .is('parent_id', null)
-        .neq('assignee_id', session.user.id),
       supabase.from('my_task_order').select('*').eq('user_id', session.user.id),
     ])
     // Self-referencing joins are ambiguous in PostgREST — fetch parent titles separately.
@@ -116,7 +108,37 @@ export default function MyTasks() {
       }
     }
     setMine(mineRows)
-    setReviews((((b.data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null }))))
+
+    // "Waiting for my check": admin checks every task; members check the
+    // subtasks under tasks assigned to them.
+    let reviewRows: TaskWithProject[] = []
+    if (profile?.role === 'admin') {
+      const { data } = await supabase
+        .from('tasks')
+        .select('*, project:projects(id, name, color, created_at)')
+        .eq('status', 'in_progress')
+        .eq('tick_done', true)
+        .eq('tick_checked', false)
+        .is('parent_id', null)
+      reviewRows = ((data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null }))
+    } else {
+      const myTop = mineRows.filter((x) => !x.parent_id)
+      if (myTop.length) {
+        const { data } = await supabase
+          .from('tasks')
+          .select('*, project:projects(id, name, color, created_at)')
+          .in('parent_id', myTop.map((x) => x.id))
+          .eq('status', 'in_progress')
+          .eq('tick_done', true)
+          .eq('tick_checked', false)
+        const titles = Object.fromEntries(myTop.map((x) => [x.id, x.title]))
+        reviewRows = ((data as TaskWithProject[]) ?? []).map((x) => ({
+          ...x,
+          parent: x.parent_id && titles[x.parent_id] ? { title: titles[x.parent_id] } : null,
+        }))
+      }
+    }
+    setReviews(reviewRows)
     const ord: Record<string, number> = {}
     for (const row of o.data ?? []) ord[row.task_id] = row.position
     setOrder(ord)
@@ -125,7 +147,7 @@ export default function MyTasks() {
 
   useEffect(() => {
     load()
-  }, [session?.user.id])
+  }, [session?.user.id, profile?.role])
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -225,7 +247,9 @@ export default function MyTasks() {
                 >
                   {assignee && <Avatar name={assignee.full_name} size={7} />}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{task.title}</span>
+                    <span className="block truncate text-sm font-medium">
+                      {task.parent ? `${task.parent.title} – ${task.title}` : task.title}
+                    </span>
                     <span className="block truncate text-xs text-slate-400">{task.project?.name}</span>
                   </span>
                 </Link>
