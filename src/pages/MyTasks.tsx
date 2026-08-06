@@ -105,7 +105,7 @@ export default function MyTasks() {
       supabase.from('my_task_order').select('*').eq('user_id', session.user.id),
     ])
     // Self-referencing joins are ambiguous in PostgREST — fetch parent titles separately.
-    const mineRows = ((a.data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null }))
+    const mineRows = ((a.data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null as { title: string } | null }))
     const parentIds = [...new Set(mineRows.map((x) => x.parent_id).filter(Boolean))] as string[]
     if (parentIds.length) {
       const { data: parents } = await supabase.from('tasks').select('id, title').in('id', parentIds)
