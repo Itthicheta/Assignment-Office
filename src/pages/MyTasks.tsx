@@ -91,12 +91,12 @@ export default function MyTasks() {
     const [a, b, o] = await Promise.all([
       supabase
         .from('tasks')
-        .select('*, project:projects(id, name, color, created_at), parent:tasks!tasks_parent_id_fkey(title)')
+        .select('*, project:projects(id, name, color, created_at)')
         .eq('assignee_id', session.user.id)
         .eq('status', 'in_progress'),
       supabase
         .from('tasks')
-        .select('*, project:projects(id, name, color, created_at), parent:tasks!tasks_parent_id_fkey(title)')
+        .select('*, project:projects(id, name, color, created_at)')
         .eq('created_by', session.user.id)
         .eq('status', 'in_progress')
         .eq('tick_done', true)
@@ -104,8 +104,19 @@ export default function MyTasks() {
         .neq('assignee_id', session.user.id),
       supabase.from('my_task_order').select('*').eq('user_id', session.user.id),
     ])
-    setMine((a.data as TaskWithProject[]) ?? [])
-    setReviews((b.data as TaskWithProject[]) ?? [])
+    // Self-referencing joins are ambiguous in PostgREST — fetch parent titles separately.
+    const mineRows = ((a.data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null }))
+    const parentIds = [...new Set(mineRows.map((x) => x.parent_id).filter(Boolean))] as string[]
+    if (parentIds.length) {
+      const { data: parents } = await supabase.from('tasks').select('id, title').in('id', parentIds)
+      const titleOf: Record<string, string> = {}
+      for (const row of parents ?? []) titleOf[row.id] = row.title
+      for (const row of mineRows) {
+        if (row.parent_id && titleOf[row.parent_id]) row.parent = { title: titleOf[row.parent_id] }
+      }
+    }
+    setMine(mineRows)
+    setReviews((((b.data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null }))))
     const ord: Record<string, number> = {}
     for (const row of o.data ?? []) ord[row.task_id] = row.position
     setOrder(ord)
