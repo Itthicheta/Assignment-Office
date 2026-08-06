@@ -5,7 +5,7 @@ export async function notify(opts: {
   userId: string | null | undefined
   actorId: string
   taskId: string
-  type: 'assigned' | 'comment' | 'review' | 'returned' | 'done'
+  type: 'assigned' | 'comment' | 'review' | 'returned' | 'done' | 'new_task' | 'task_approved'
 }) {
   if (!opts.userId || opts.userId === opts.actorId) return
   await supabase.from('notifications').insert({

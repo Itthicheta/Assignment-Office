@@ -12,6 +12,7 @@ import type { Task } from '../lib/types'
 
 interface TaskWithProject extends Task {
   project: { id: string; name: string; color: string; created_at: string } | null
+  parent: { title: string } | null
 }
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
@@ -42,8 +43,16 @@ function SortableRow({ task, myPos }: { task: TaskWithProject; myPos: number }) 
         ⠿
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{task.title}</span>
-        {task.parent_id && <span className="text-xs text-slate-400">↳ subtask</span>}
+        <span className="block truncate text-sm font-medium">
+          {task.parent ? (
+            <>
+              <span className="text-slate-400">{task.parent.title} – </span>
+              {task.title}
+            </>
+          ) : (
+            task.title
+          )}
+        </span>
       </span>
       <PriorityBadge priority={task.priority} />
       {task.due_date && (
@@ -82,12 +91,12 @@ export default function MyTasks() {
     const [a, b, o] = await Promise.all([
       supabase
         .from('tasks')
-        .select('*, project:projects(id, name, color, created_at)')
+        .select('*, project:projects(id, name, color, created_at), parent:tasks!tasks_parent_id_fkey(title)')
         .eq('assignee_id', session.user.id)
         .eq('status', 'in_progress'),
       supabase
         .from('tasks')
-        .select('*, project:projects(id, name, color, created_at)')
+        .select('*, project:projects(id, name, color, created_at), parent:tasks!tasks_parent_id_fkey(title)')
         .eq('created_by', session.user.id)
         .eq('status', 'in_progress')
         .eq('tick_done', true)

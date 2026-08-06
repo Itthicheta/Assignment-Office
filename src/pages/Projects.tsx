@@ -1,10 +1,13 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { isAdmin } from '../lib/can'
-import type { Project } from '../lib/types'
+import type { Project, ProjectSection } from '../lib/types'
 
 const PALETTE = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#0ea5e9', '#a855f7', '#ec4899', '#14b8a6']
 
@@ -13,22 +16,103 @@ interface Counts {
   done: number
 }
 
+function ProjectCard({
+  project,
+  counts,
+  sections,
+  admin,
+  onMove,
+}: {
+  project: Project
+  counts: Counts
+  sections: ProjectSection[]
+  admin: boolean
+  onMove: (project: Project, sectionId: string) => void
+}) {
+  const { t } = useI18n()
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: project.id,
+    disabled: !admin,
+  })
+  const pct = counts.total === 0 ? 0 : Math.round((counts.done / counts.total) * 100)
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-300 ${isDragging ? 'z-10 opacity-70' : ''}`}
+    >
+      <div className="flex items-center gap-2">
+        {admin && (
+          <span
+            {...attributes}
+            {...listeners}
+            className="-ml-1 cursor-grab touch-none text-slate-300 select-none active:cursor-grabbing"
+          >
+            ⠿
+          </span>
+        )}
+        <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: project.color }} />
+        <Link to={`/projects/${project.id}`} className="min-w-0 flex-1 truncate font-semibold hover:text-indigo-600">
+          {project.name}
+        </Link>
+      </div>
+      {project.description && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{project.description}</p>}
+      <div className="mt-3">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: project.color }} />
+        </div>
+        <div className="mt-1 flex items-center justify-between">
+          <p className="text-xs text-slate-400">
+            {counts.done}/{counts.total} {t('tasksDone')} · {pct}%
+          </p>
+          {admin && (
+            <select
+              value={project.section_id ?? ''}
+              onChange={(e) => onMove(project, e.target.value)}
+              className="rounded-md border border-slate-200 bg-white px-1 py-0.5 text-[10px] text-slate-400 focus:outline-none"
+              title={t('section')}
+            >
+              <option value="">{t('noSection')}</option>
+              {sections.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Projects() {
   const { session, profile } = useAuth()
   const { t } = useI18n()
   const [projects, setProjects] = useState<Project[]>([])
+  const [sections, setSections] = useState<ProjectSection[]>([])
   const [counts, setCounts] = useState<Record<string, Counts>>({})
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [newSection, setNewSection] = useState('')
+  const [showSectionForm, setShowSectionForm] = useState(false)
+  const [sectionEdits, setSectionEdits] = useState<Record<string, string>>({})
   const [loaded, setLoaded] = useState(false)
 
+  const admin = isAdmin(profile)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  )
+
   const load = async () => {
-    const [p, tsk] = await Promise.all([
-      supabase.from('projects').select('*').eq('archived', false).order('created_at'),
+    const [p, s, tsk] = await Promise.all([
+      supabase.from('projects').select('*').eq('archived', false).order('position'),
+      supabase.from('project_sections').select('*').order('position'),
       supabase.from('tasks').select('id, project_id, status, parent_id').is('parent_id', null),
     ])
     setProjects((p.data as Project[]) ?? [])
+    setSections((s.data as ProjectSection[]) ?? [])
     const c: Record<string, Counts> = {}
     for (const row of tsk.data ?? []) {
       c[row.project_id] ??= { total: 0, done: 0 }
@@ -47,33 +131,142 @@ export default function Projects() {
     e.preventDefault()
     if (!session || !name.trim()) return
     const color = PALETTE[projects.length % PALETTE.length]
-    await supabase.from('projects').insert({
+    const { error } = await supabase.from('projects').insert({
       name: name.trim(),
       description: description.trim(),
       color,
       created_by: session.user.id,
     })
+    if (error) {
+      alert(error.message)
+      return
+    }
     setName('')
     setDescription('')
     setShowForm(false)
     load()
   }
 
+  const createSection = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!session || !newSection.trim()) return
+    const { error } = await supabase.from('project_sections').insert({
+      name: newSection.trim(),
+      created_by: session.user.id,
+    })
+    if (error) alert(error.message)
+    setNewSection('')
+    setShowSectionForm(false)
+    load()
+  }
+
+  const renameSection = async (section: ProjectSection) => {
+    const next = (sectionEdits[section.id] ?? section.name).trim()
+    if (next && next !== section.name) {
+      await supabase.from('project_sections').update({ name: next }).eq('id', section.id)
+      load()
+    }
+    setSectionEdits((s) => {
+      const { [section.id]: _, ...rest } = s
+      return rest
+    })
+  }
+
+  const deleteSection = async (section: ProjectSection) => {
+    if (!confirm(t('confirmDeleteSection'))) return
+    await supabase.from('project_sections').delete().eq('id', section.id)
+    load()
+  }
+
+  const moveToSection = async (project: Project, sectionId: string) => {
+    await supabase.from('projects').update({ section_id: sectionId || null }).eq('id', project.id)
+    load()
+  }
+
+  const groupProjects = (sectionId: string | null) =>
+    projects.filter((p) => p.section_id === sectionId).sort((a, b) => a.position - b.position)
+
+  const onDragEnd = (group: Project[]) => async (e: DragEndEvent) => {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const oldIndex = group.findIndex((x) => x.id === active.id)
+    const newIndex = group.findIndex((x) => x.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    const reordered = arrayMove(group, oldIndex, newIndex)
+    const before = reordered[newIndex - 1]?.position
+    const after = reordered[newIndex + 1]?.position
+    const newPos =
+      before !== undefined && after !== undefined
+        ? (before + after) / 2
+        : before !== undefined
+          ? before + 1
+          : after !== undefined
+            ? after - 1
+            : 0
+    setProjects((ps) => ps.map((x) => (x.id === active.id ? { ...x, position: newPos } : x)))
+    await supabase.from('projects').update({ position: newPos }).eq('id', active.id)
+  }
+
+  const ungrouped = useMemo(() => groupProjects(null), [projects])
+
   if (!loaded) return <p className="text-slate-400">{t('loading')}</p>
 
+  const renderGroup = (group: Project[]) => (
+    <DndContext sensors={sensors} onDragEnd={onDragEnd(group)}>
+      <SortableContext items={group.map((x) => x.id)} strategy={rectSortingStrategy}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {group.map((p) => (
+            <ProjectCard
+              key={p.id}
+              project={p}
+              counts={counts[p.id] ?? { total: 0, done: 0 }}
+              sections={sections}
+              admin={admin}
+              onMove={moveToSection}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  )
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold">{t('projects')}</h1>
-        {isAdmin(profile) && (
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
-          >
-            + {t('newProject')}
-          </button>
+        {admin && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowSectionForm(!showSectionForm)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              + {t('newSection')}
+            </button>
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              + {t('newProject')}
+            </button>
+          </div>
         )}
       </div>
+
+      {showSectionForm && (
+        <form onSubmit={createSection} className="flex gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <input
+            autoFocus
+            required
+            value={newSection}
+            onChange={(e) => setNewSection(e.target.value)}
+            placeholder={t('sectionName')}
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+          />
+          <button className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700">
+            {t('create')}
+          </button>
+        </form>
+      )}
 
       {showForm && (
         <form onSubmit={createProject} className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -113,33 +306,42 @@ export default function Projects() {
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {projects.map((p) => {
-          const c = counts[p.id] ?? { total: 0, done: 0 }
-          const pct = c.total === 0 ? 0 : Math.round((c.done / c.total) * 100)
-          return (
-            <Link
-              key={p.id}
-              to={`/projects/${p.id}`}
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-300"
-            >
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full" style={{ background: p.color }} />
-                <span className="truncate font-semibold">{p.name}</span>
-              </div>
-              {p.description && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{p.description}</p>}
-              <div className="mt-3">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: p.color }} />
-                </div>
-                <p className="mt-1 text-xs text-slate-400">
-                  {c.done}/{c.total} {t('tasksDone')} · {pct}%
-                </p>
-              </div>
-            </Link>
-          )
-        })}
-      </div>
+      {sections.map((section) => {
+        const group = groupProjects(section.id)
+        return (
+          <section key={section.id}>
+            <div className="mb-2 flex items-center gap-2">
+              {admin ? (
+                <>
+                  <input
+                    value={sectionEdits[section.id] ?? section.name}
+                    onChange={(e) => setSectionEdits((s) => ({ ...s, [section.id]: e.target.value }))}
+                    onBlur={() => renameSection(section)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                    className="rounded-md border border-transparent bg-transparent text-sm font-bold text-slate-700 hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:outline-none"
+                  />
+                  <button onClick={() => deleteSection(section)} className="text-slate-300 hover:text-red-500">✕</button>
+                </>
+              ) : (
+                <h2 className="text-sm font-bold text-slate-700">{section.name}</h2>
+              )}
+              <span className="text-xs text-slate-400">({group.length})</span>
+            </div>
+            {renderGroup(group)}
+          </section>
+        )
+      })}
+
+      {ungrouped.length > 0 && (
+        <section>
+          {sections.length > 0 && (
+            <h2 className="mb-2 text-sm font-bold text-slate-500">
+              {t('noSection')} <span className="text-xs font-normal text-slate-400">({ungrouped.length})</span>
+            </h2>
+          )}
+          {renderGroup(ungrouped)}
+        </section>
+      )}
     </div>
   )
 }

@@ -7,87 +7,153 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { logActivity, notify } from '../lib/notify'
-import { canEditFields, canReorderProject, isAdmin } from '../lib/can'
+import { assigneeChoices, canEditFields, canManageSubtasks, canReorderProject, isAdmin } from '../lib/can'
 import { PriorityBadge } from '../components/Badges'
 import Avatar from '../components/Avatar'
 import TaskTicks from '../components/TaskTicks'
+import ApproveControl from '../components/ApproveControl'
 import TaskDrawer from '../components/TaskDrawer'
 import FilesSection from '../components/FilesSection'
 import type { Profile, Project, Task } from '../lib/types'
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
+function AssigneeSelect({
+  task,
+  parent,
+  profiles,
+  onAssign,
+}: {
+  task: Task
+  parent?: Task | null
+  profiles: Profile[]
+  onAssign: (assigneeId: string) => void
+}) {
+  const { profile } = useAuth()
+  const { t } = useI18n()
+  const editable = task.parent_id ? canManageSubtasks(profile, parent!) : canEditFields(profile, task)
+
+  if (!editable) {
+    return task.assignee_id ? (
+      <Avatar name={profiles.find((p) => p.id === task.assignee_id)?.full_name ?? '?'} size={7} />
+    ) : null
+  }
+  const choices = assigneeChoices(profile, task, profiles)
+  return (
+    <select
+      value={task.assignee_id ?? ''}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onAssign(e.target.value)}
+      className="max-w-28 rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 focus:border-indigo-400 focus:outline-none"
+    >
+      <option value="">{t('unassigned')}</option>
+      {choices.map((p) => (
+        <option key={p.id} value={p.id}>{p.full_name}</option>
+      ))}
+      {/* keep an out-of-list current assignee visible */}
+      {task.assignee_id && !choices.some((p) => p.id === task.assignee_id) && (
+        <option value={task.assignee_id}>
+          {profiles.find((p) => p.id === task.assignee_id)?.full_name ?? '?'}
+        </option>
+      )}
+    </select>
+  )
+}
+
 function TaskRow({
   task,
+  subtasks,
   profiles,
   draggable,
+  expanded,
+  onToggleExpand,
   onOpen,
+  onOpenSub,
   onChanged,
   onAssign,
 }: {
   task: Task
+  subtasks: Task[]
   profiles: Profile[]
   draggable: boolean
+  expanded: boolean
+  onToggleExpand: () => void
   onOpen: () => void
+  onOpenSub: (sub: Task) => void
   onChanged: () => void
-  onAssign: (assigneeId: string) => void
+  onAssign: (task: Task, assigneeId: string) => void
 }) {
-  const { t } = useI18n()
-  const { profile } = useAuth()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     disabled: !draggable,
   })
-  const editor = canEditFields(profile, task)
   const overdue = task.due_date && task.due_date < todayStr() && task.status !== 'done'
   const waitingCheck = task.tick_done && !task.tick_checked && task.status !== 'done'
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      onClick={onOpen}
-      className={`flex w-full cursor-pointer items-center gap-2 rounded-xl border bg-white px-3 py-3 text-left shadow-sm hover:border-indigo-300 ${
-        isDragging ? 'z-10 opacity-70' : ''
-      } ${waitingCheck ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}
-    >
-      {draggable && (
-        <span
-          {...attributes}
-          {...listeners}
-          onClick={(e) => e.stopPropagation()}
-          className="cursor-grab touch-none px-1 text-slate-300 select-none active:cursor-grabbing"
-        >
-          ⠿
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
+      <div
+        onClick={onOpen}
+        className={`flex w-full cursor-pointer items-center gap-2 rounded-xl border bg-white px-3 py-3 text-left shadow-sm hover:border-indigo-300 ${
+          isDragging ? 'z-10 opacity-70' : ''
+        } ${waitingCheck ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}
+      >
+        {draggable && (
+          <span
+            {...attributes}
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+            className="cursor-grab touch-none px-1 text-slate-300 select-none active:cursor-grabbing"
+          >
+            ⠿
+          </span>
+        )}
+        {subtasks.length > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleExpand()
+            }}
+            className="flex items-center gap-0.5 text-xs text-slate-400 hover:text-slate-600"
+          >
+            <span className={`inline-block transition-transform ${expanded ? 'rotate-90' : ''}`}>▸</span>
+            {subtasks.filter((s) => s.status === 'done').length}/{subtasks.length}
+          </button>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-sm font-medium ${task.status === 'done' ? 'text-slate-400 line-through' : ''}`}>
+            {task.title}
+          </span>
         </span>
-      )}
-      <TaskTicks task={task} onChanged={onChanged} />
-      <span className="min-w-0 flex-1">
-        <span className={`block truncate text-sm font-medium ${task.status === 'done' ? 'text-slate-400 line-through' : ''}`}>
-          {task.title}
-        </span>
-      </span>
-      <PriorityBadge priority={task.priority} />
-      {task.due_date && (
-        <span className={`hidden text-xs whitespace-nowrap sm:inline ${overdue ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
-          {task.due_date}
-        </span>
-      )}
-      {editor ? (
-        <select
-          value={task.assignee_id ?? ''}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => onAssign(e.target.value)}
-          className="max-w-28 rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 focus:border-indigo-400 focus:outline-none"
-        >
-          <option value="">{t('unassigned')}</option>
-          {profiles.map((p) => (
-            <option key={p.id} value={p.id}>{p.full_name}</option>
+        <PriorityBadge priority={task.priority} />
+        {task.due_date && (
+          <span className={`hidden text-xs whitespace-nowrap sm:inline ${overdue ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
+            {task.due_date}
+          </span>
+        )}
+        <TaskTicks task={task} onChanged={onChanged} />
+        <AssigneeSelect task={task} profiles={profiles} onAssign={(a) => onAssign(task, a)} />
+        <ApproveControl task={task} onChanged={onChanged} />
+      </div>
+
+      {expanded && subtasks.length > 0 && (
+        <div className="mt-1 ml-8 space-y-1">
+          {subtasks.map((sub) => (
+            <div
+              key={sub.id}
+              onClick={() => onOpenSub(sub)}
+              className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-100 bg-white px-3 py-2 hover:border-indigo-200"
+            >
+              <span className="text-slate-300">↳</span>
+              <span className={`min-w-0 flex-1 truncate text-sm ${sub.status === 'done' ? 'text-slate-400 line-through' : ''}`}>
+                {sub.title}
+              </span>
+              <TaskTicks task={sub} parent={task} onChanged={onChanged} />
+              <AssigneeSelect task={sub} parent={task} profiles={profiles} onAssign={(a) => onAssign(sub, a)} />
+            </div>
           ))}
-        </select>
-      ) : task.assignee_id ? (
-        <Avatar name={profiles.find((p) => p.id === task.assignee_id)?.full_name ?? '?'} size={7} />
-      ) : null}
+        </div>
+      )}
     </div>
   )
 }
@@ -101,6 +167,7 @@ export default function ProjectDetail() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [newTitle, setNewTitle] = useState('')
   const [nameEdit, setNameEdit] = useState('')
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [loaded, setLoaded] = useState(false)
 
   const sensors = useSensors(
@@ -153,6 +220,11 @@ export default function ProjectDetail() {
     }
     if (data) {
       await logActivity({ projectId: id, taskId: data.id, actorId: session.user.id, action: 'created' })
+      if (!isAdmin(profile)) {
+        for (const admin of profiles.filter((p) => p.role === 'admin')) {
+          await notify({ userId: admin.id, actorId: session.user.id, taskId: data.id, type: 'new_task' })
+        }
+      }
     }
     setNewTitle('')
     load()
@@ -198,6 +270,14 @@ export default function ProjectDetail() {
     await supabase.from('tasks').update({ position: newPos }).eq('id', active.id)
   }
 
+  const toggleExpand = (taskId: string) =>
+    setExpandedIds((s) => {
+      const next = new Set(s)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+
   const canEditProject = profile?.role === 'admin' || project?.created_by === session?.user.id
   const draggable = project ? canReorderProject(profile, project.created_by) : false
 
@@ -218,8 +298,25 @@ export default function ProjectDetail() {
   }
 
   const openTask = tasks.find((x) => x.id === openTaskId) ?? null
+  const openParent = openTask?.parent_id ? (tasks.find((x) => x.id === openTask.parent_id) ?? null) : null
 
   if (!loaded || !project) return <p className="text-slate-400">{t('loading')}</p>
+
+  const renderRow = (task: Task, drag: boolean) => (
+    <TaskRow
+      key={task.id}
+      task={task}
+      subtasks={subtasksOf(task.id)}
+      profiles={profiles}
+      draggable={drag}
+      expanded={expandedIds.has(task.id)}
+      onToggleExpand={() => toggleExpand(task.id)}
+      onOpen={() => setParams({ task: task.id })}
+      onOpenSub={(sub) => setParams({ task: sub.id })}
+      onChanged={load}
+      onAssign={assignTask}
+    />
+  )
 
   return (
     <div className="space-y-5">
@@ -244,16 +341,14 @@ export default function ProjectDetail() {
         <FilesSection projectId={project.id} taskId={null} />
       </div>
 
-      {isAdmin(profile) && (
-        <form onSubmit={addTask}>
-          <input
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder={`+ ${t('addTask')}`}
-            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none"
-          />
-        </form>
-      )}
+      <form onSubmit={addTask}>
+        <input
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          placeholder={`+ ${t('addTask')}`}
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none"
+        />
+      </form>
 
       {inProgress.length === 0 && doneTasks.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
@@ -268,19 +363,7 @@ export default function ProjectDetail() {
           </h2>
           <DndContext sensors={sensors} onDragEnd={onDragEnd}>
             <SortableContext items={inProgress.map((x) => x.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
-                {inProgress.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    profiles={profiles}
-                    draggable={draggable}
-                    onOpen={() => setParams({ task: task.id })}
-                    onChanged={load}
-                    onAssign={(a) => assignTask(task, a)}
-                  />
-                ))}
-              </div>
+              <div className="space-y-2">{inProgress.map((task) => renderRow(task, draggable))}</div>
             </SortableContext>
           </DndContext>
         </section>
@@ -291,25 +374,14 @@ export default function ProjectDetail() {
           <h2 className="mb-2 text-sm font-semibold text-emerald-700">
             {t('done')} <span className="text-xs font-normal text-slate-400">({doneTasks.length})</span>
           </h2>
-          <div className="space-y-2">
-            {doneTasks.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                profiles={profiles}
-                draggable={false}
-                onOpen={() => setParams({ task: task.id })}
-                onChanged={load}
-                onAssign={(a) => assignTask(task, a)}
-              />
-            ))}
-          </div>
+          <div className="space-y-2">{doneTasks.map((task) => renderRow(task, false))}</div>
         </section>
       )}
 
       {openTask && (
         <TaskDrawer
           task={openTask}
+          parent={openParent}
           subtasks={subtasksOf(openTask.id)}
           onClose={() => setParams({})}
           onChanged={load}

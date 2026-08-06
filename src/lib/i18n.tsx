@@ -36,9 +36,13 @@ const dict = {
   // Statuses & ticks
   in_progress: { en: 'In Progress', th: 'กำลังทำ' },
   done: { en: 'Done', th: 'เสร็จแล้ว' },
-  tickWork: { en: 'Work done', th: 'ทำเสร็จ' },
+  tickWork: { en: 'Done', th: 'เสร็จ' },
   tickCheck: { en: 'Checked', th: 'ตรวจแล้ว' },
   waitingMyCheck: { en: 'Waiting for my check', th: 'รอฉันตรวจ' },
+  pendingApproval: { en: 'Pending approval', th: 'รออนุมัติ' },
+  approve: { en: 'Approve', th: 'อนุมัติ' },
+  approvedLock: { en: 'Approved (locked)', th: 'อนุมัติแล้ว (ล็อก)' },
+  createdBy: { en: 'Created', th: 'สร้างโดย' },
 
   // Priorities
   urgent: { en: 'Urgent', th: 'ด่วน' },
@@ -56,6 +60,11 @@ const dict = {
   cancel: { en: 'Cancel', th: 'ยกเลิก' },
   noProjects: { en: 'No projects yet.', th: 'ยังไม่มีโปรเจกต์' },
   tasksDone: { en: 'done', th: 'เสร็จ' },
+  newSection: { en: 'New section', th: 'เพิ่มหมวด' },
+  sectionName: { en: 'Section name', th: 'ชื่อหมวด' },
+  noSection: { en: 'Other projects', th: 'โปรเจกต์อื่น ๆ' },
+  confirmDeleteSection: { en: 'Delete this section? Its projects are kept.', th: 'ลบหมวดนี้? โปรเจกต์จะไม่ถูกลบ' },
+  section: { en: 'Section', th: 'หมวด' },
 
   // Project detail / tasks
   addTask: { en: 'Add a task…', th: 'เพิ่มงาน…' },
@@ -92,6 +101,8 @@ const dict = {
   act_untick_done: { en: 'reopened the work', th: 'เปิดงานใหม่อีกครั้ง' },
   act_checked: { en: 'checked and approved', th: 'ตรวจผ่านแล้ว' },
   act_unchecked: { en: 'removed the approval', th: 'ยกเลิกการอนุมัติ' },
+  act_approved: { en: 'approved this task', th: 'อนุมัติงานนี้' },
+  act_unapproved: { en: 'removed task approval', th: 'ยกเลิกการอนุมัติงานนี้' },
 
   // Notifications
   notif_assigned: { en: 'assigned you a task', th: 'มอบหมายงานให้คุณ' },
@@ -99,6 +110,8 @@ const dict = {
   notif_review: { en: 'finished a task — waiting for your check', th: 'ทำงานเสร็จแล้ว รอคุณตรวจ' },
   notif_returned: { en: 'returned your task with feedback', th: 'ส่งงานกลับมาให้คุณแก้ไข' },
   notif_done: { en: 'checked and approved your task', th: 'ตรวจงานของคุณผ่านแล้ว' },
+  notif_new_task: { en: 'created a new task — waiting for your approval', th: 'สร้างงานใหม่ รอคุณอนุมัติ' },
+  notif_task_approved: { en: 'approved your task', th: 'อนุมัติงานของคุณแล้ว' },
   markAllRead: { en: 'Mark all as read', th: 'อ่านทั้งหมดแล้ว' },
   noNotifications: { en: 'No notifications', th: 'ไม่มีการแจ้งเตือน' },
 

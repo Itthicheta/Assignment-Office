@@ -4,25 +4,28 @@ import { useAuth } from '../context/AuthContext'
 import { useI18n, type TKey } from '../lib/i18n'
 import { logActivity, notify } from '../lib/notify'
 import {
-  canAddSubtask,
+  assigneeChoices,
   canDelete,
   canEditDescription,
   canEditFields,
-  canEditSubtask,
+  canManageSubtasks,
+  canRename,
 } from '../lib/can'
 import type { Activity, Comment, Priority, Task } from '../lib/types'
 import Avatar from './Avatar'
 import TaskTicks from './TaskTicks'
+import ApproveControl from './ApproveControl'
 import FilesSection from './FilesSection'
 
 interface Props {
   task: Task
+  parent?: Task | null
   subtasks: Task[]
   onClose: () => void
   onChanged: () => void
 }
 
-export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props) {
+export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged }: Props) {
   const { session, profile, profiles } = useAuth()
   const { t } = useI18n()
   const [comments, setComments] = useState<Comment[]>([])
@@ -34,8 +37,11 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
   const [subEdits, setSubEdits] = useState<Record<string, string>>({})
 
   const me = session!.user.id
-  const editor = canEditFields(profile, task)
-  const descEditor = canEditDescription(profile, task)
+  const isSub = !!task.parent_id
+  const editor = isSub ? canManageSubtasks(profile, parent!) : canEditFields(profile, task)
+  const renamer = isSub ? editor : canRename(profile, task)
+  const descEditor = canEditDescription(profile, task, parent)
+  const subManager = canManageSubtasks(profile, task)
 
   useEffect(() => {
     setTitle(task.title)
@@ -132,12 +138,6 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
     onChanged()
   }
 
-  const toggleSubtask = async (sub: Task) => {
-    const { error } = await supabase.from('tasks').update({ tick_done: !sub.tick_done }).eq('id', sub.id)
-    if (error) alert(error.message)
-    onChanged()
-  }
-
   const saveSubTitle = async (sub: Task) => {
     const next = (subEdits[sub.id] ?? sub.title).trim()
     if (next && next !== sub.title) {
@@ -152,8 +152,10 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
   }
 
   const assignSubtask = async (sub: Task, assignee_id: string) => {
-    const { error } = await supabase.from('tasks').update({ assignee_id: assignee_id || null }).eq('id', sub.id)
+    const value = assignee_id || null
+    const { error } = await supabase.from('tasks').update({ assignee_id: value }).eq('id', sub.id)
     if (error) alert(error.message)
+    else await notify({ userId: value, actorId: me, taskId: sub.id, type: 'assigned' })
     onChanged()
   }
 
@@ -165,7 +167,11 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
 
   const removeTask = async () => {
     if (!confirm(t('confirmDelete'))) return
-    await supabase.from('tasks').delete().eq('id', task.id)
+    const { error } = await supabase.from('tasks').delete().eq('id', task.id)
+    if (error) {
+      alert(error.message)
+      return
+    }
     onClose()
     onChanged()
   }
@@ -184,7 +190,8 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
       untick_done: t('act_untick_done'),
       checked: t('act_checked'),
       unchecked: t('act_unchecked'),
-      // legacy entries from the pre-tick status model
+      approved: t('act_approved'),
+      unapproved: t('act_unapproved'),
       status: `→ ${a.detail.status ? t(a.detail.status as TKey) : ''}`,
     }
     return map[a.action] ?? a.action
@@ -193,29 +200,44 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
   const inputCls =
     'w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400'
 
+  const mainAssigneeChoices = assigneeChoices(profile, task, profiles)
+
   return (
     <div className="fixed inset-0 z-30 flex justify-end bg-black/30" onClick={onClose}>
       <div
         className="flex h-full w-full max-w-lg flex-col overflow-y-auto bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start gap-2 border-b border-slate-100 p-4">
-          <textarea
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={saveTitle}
-            disabled={!editor}
-            rows={1}
-            className="flex-1 resize-none border-none bg-transparent text-lg font-semibold focus:outline-none disabled:text-slate-700"
-          />
-          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100">✕</button>
+        <div className="border-b border-slate-100 p-4">
+          <div className="flex items-start gap-2">
+            <textarea
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={saveTitle}
+              disabled={!renamer}
+              rows={1}
+              className="flex-1 resize-none border-none bg-transparent text-lg font-semibold focus:outline-none disabled:text-slate-700"
+            />
+            <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100">✕</button>
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            {isSub && parent && (
+              <span className="truncate text-xs text-slate-400">↳ {parent.title}</span>
+            )}
+            <span className="ml-auto text-xs whitespace-nowrap text-slate-400">
+              {t('createdBy')}: {nameOf(task.created_by)}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-4 p-4">
-          <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
-            <TaskTicks task={task} onChanged={() => { onChanged(); reloadActivity() }} />
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${task.status === 'done' ? 'bg-emerald-100 text-emerald-700' : task.tick_done ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-              {task.status === 'done' ? t('done') : task.tick_done ? t('waitingMyCheck') : t('in_progress')}
+          <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
+            <TaskTicks task={task} parent={parent} onChanged={() => { onChanged(); reloadActivity() }} />
+            <span className="flex items-center gap-2">
+              <ApproveControl task={task} onChanged={() => { onChanged(); reloadActivity() }} />
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${task.status === 'done' ? 'bg-emerald-100 text-emerald-700' : task.tick_done ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                {task.status === 'done' ? t('done') : task.tick_done ? t('waitingMyCheck') : t('in_progress')}
+              </span>
             </span>
           </div>
 
@@ -229,9 +251,12 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
                 className={`mt-1 ${inputCls}`}
               >
                 <option value="">{t('unassigned')}</option>
-                {profiles.map((p) => (
+                {mainAssigneeChoices.map((p) => (
                   <option key={p.id} value={p.id}>{p.full_name}</option>
                 ))}
+                {task.assignee_id && !mainAssigneeChoices.some((p) => p.id === task.assignee_id) && (
+                  <option value={task.assignee_id}>{nameOf(task.assignee_id)}</option>
+                )}
               </select>
             </label>
             <label className="block text-xs font-semibold text-slate-500">
@@ -271,34 +296,27 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
             />
           </label>
 
-          <div>
-            <h3 className="mb-1 text-xs font-semibold text-slate-500">
-              {t('subtasks')} ({subtasks.filter((s) => s.tick_done).length}/{subtasks.length})
-            </h3>
-            <div className="space-y-1">
-              {subtasks.map((sub) => {
-                const editable = canEditSubtask(profile, sub, task)
-                return (
+          {!isSub && (
+            <div>
+              <h3 className="mb-1 text-xs font-semibold text-slate-500">
+                {t('subtasks')} ({subtasks.filter((s) => s.status === 'done').length}/{subtasks.length})
+              </h3>
+              <div className="space-y-1">
+                {subtasks.map((sub) => (
                   <div key={sub.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2 py-1.5">
-                    <input
-                      type="checkbox"
-                      checked={sub.tick_done}
-                      onChange={() => toggleSubtask(sub)}
-                      disabled={!editable}
-                      className="h-4 w-4 accent-indigo-600"
-                    />
+                    <TaskTicks task={sub} parent={task} onChanged={onChanged} />
                     <input
                       value={subEdits[sub.id] ?? sub.title}
                       onChange={(e) => setSubEdits((s) => ({ ...s, [sub.id]: e.target.value }))}
                       onBlur={() => saveSubTitle(sub)}
                       onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                      disabled={!editable}
-                      className={`flex-1 border-none bg-transparent text-sm focus:outline-none ${sub.tick_done ? 'text-slate-400 line-through' : ''}`}
+                      disabled={!subManager}
+                      className={`flex-1 border-none bg-transparent text-sm focus:outline-none ${sub.status === 'done' ? 'text-slate-400 line-through' : ''}`}
                     />
                     <select
                       value={sub.assignee_id ?? ''}
                       onChange={(e) => assignSubtask(sub, e.target.value)}
-                      disabled={!editable}
+                      disabled={!subManager}
                       className="max-w-24 rounded-md border border-slate-200 bg-white px-1 py-0.5 text-xs text-slate-500 focus:outline-none"
                     >
                       <option value="">—</option>
@@ -306,24 +324,24 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
                         <option key={p.id} value={p.id}>{p.full_name}</option>
                       ))}
                     </select>
-                    {editable && (
+                    {subManager && (
                       <button onClick={() => removeSubtask(sub)} className="text-slate-300 hover:text-red-500">✕</button>
                     )}
                   </div>
-                )
-              })}
+                ))}
+              </div>
+              {subManager && (
+                <form onSubmit={addSubtask}>
+                  <input
+                    value={newSub}
+                    onChange={(e) => setNewSub(e.target.value)}
+                    placeholder={`+ ${t('addSubtask')}`}
+                    className="mt-1 w-full rounded-lg border border-dashed border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+                  />
+                </form>
+              )}
             </div>
-            {canAddSubtask(profile, task) && (
-              <form onSubmit={addSubtask}>
-                <input
-                  value={newSub}
-                  onChange={(e) => setNewSub(e.target.value)}
-                  placeholder={`+ ${t('addSubtask')}`}
-                  className="mt-1 w-full rounded-lg border border-dashed border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
-                />
-              </form>
-            )}
-          </div>
+          )}
 
           <FilesSection projectId={task.project_id} taskId={task.id} />
 
@@ -369,7 +387,7 @@ export default function TaskDrawer({ task, subtasks, onClose, onChanged }: Props
             </ul>
           </details>
 
-          {canDelete(profile, task) && (
+          {canDelete(profile, task, parent) && (
             <button onClick={removeTask} className="text-xs text-red-500 hover:underline">
               🗑 {t('deleteTask')}
             </button>

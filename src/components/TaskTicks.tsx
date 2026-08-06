@@ -4,9 +4,18 @@ import { canTickChecked, canTickDone, isSelfTask } from '../lib/can'
 import { setTickChecked, setTickDone } from '../lib/taskActions'
 import type { Task } from '../lib/types'
 
-// The dual-tick control: [work done] by assignee, [checked] by creator/admin.
-// Status is derived server-side; both ticks (or one on self-tasks) = Done.
-export default function TaskTicks({ task, onChanged }: { task: Task; onChanged: () => void }) {
+// The dual-tick control: [Done] by assignee, [Checked] by whoever reviews —
+// the creator/admin for tasks, the main task's assignee/admin for subtasks
+// (pass `parent`). Status is derived server-side.
+export default function TaskTicks({
+  task,
+  parent,
+  onChanged,
+}: {
+  task: Task
+  parent?: Task | null
+  onChanged: () => void
+}) {
   const { session, profile } = useAuth()
   const { t } = useI18n()
   const me = session!.user.id
@@ -27,12 +36,12 @@ export default function TaskTicks({ task, onChanged }: { task: Task; onChanged: 
     <span className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
       <label
         title={t('tickWork')}
-        className={`flex items-center gap-1 text-xs ${canTickDone(profile, task) ? 'cursor-pointer' : 'opacity-50'}`}
+        className={`flex items-center gap-1 text-xs ${canTickDone(profile, task, parent) ? 'cursor-pointer' : 'opacity-50'}`}
       >
         <input
           type="checkbox"
           checked={task.tick_done}
-          disabled={!canTickDone(profile, task)}
+          disabled={!canTickDone(profile, task, parent)}
           onChange={toggleDone}
           className="h-4 w-4 accent-blue-600"
         />
@@ -41,12 +50,12 @@ export default function TaskTicks({ task, onChanged }: { task: Task; onChanged: 
       {!isSelfTask(task) && (
         <label
           title={t('tickCheck')}
-          className={`flex items-center gap-1 text-xs ${canTickChecked(profile, task) ? 'cursor-pointer' : 'opacity-50'}`}
+          className={`flex items-center gap-1 text-xs ${canTickChecked(profile, task, parent) ? 'cursor-pointer' : 'opacity-50'}`}
         >
           <input
             type="checkbox"
             checked={task.tick_checked}
-            disabled={!canTickChecked(profile, task)}
+            disabled={!canTickChecked(profile, task, parent)}
             onChange={toggleChecked}
             className="h-4 w-4 accent-emerald-600"
           />

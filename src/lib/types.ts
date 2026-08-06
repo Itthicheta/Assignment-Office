@@ -14,6 +14,16 @@ export interface Project {
   description: string
   color: string
   archived: boolean
+  section_id: string | null
+  position: number
+  created_by: string
+  created_at: string
+}
+
+export interface ProjectSection {
+  id: string
+  name: string
+  position: number
   created_by: string
   created_at: string
 }
@@ -28,6 +38,7 @@ export interface Task {
   priority: Priority
   tick_done: boolean
   tick_checked: boolean
+  approved: boolean
   position: number
   assignee_id: string | null
   due_date: string | null

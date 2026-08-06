@@ -35,6 +35,22 @@ export async function setTickChecked(task: Task, value: boolean, actorId: string
   return null
 }
 
+// Admin's legitimacy approval: locks rename/delete; notifies the creator.
+export async function setApproved(task: Task, value: boolean, actorId: string): Promise<string | null> {
+  const { error } = await supabase.from('tasks').update({ approved: value }).eq('id', task.id)
+  if (error) return error.message
+  await logActivity({
+    projectId: task.project_id,
+    taskId: task.id,
+    actorId,
+    action: value ? 'approved' : 'unapproved',
+  })
+  if (value && actorId !== task.created_by) {
+    await notify({ userId: task.created_by, actorId, taskId: task.id, type: 'task_approved' })
+  }
+  return null
+}
+
 // Reject work: creator/admin unticks the assignee's work tick to send it back.
 export async function rejectWork(task: Task, actorId: string): Promise<string | null> {
   const { error } = await supabase.from('tasks').update({ tick_done: false }).eq('id', task.id)
