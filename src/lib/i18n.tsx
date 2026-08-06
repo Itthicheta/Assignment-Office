@@ -28,6 +28,14 @@ const dict = {
   adminRole: { en: 'Admin', th: 'ผู้ดูแล' },
   memberRole: { en: 'Member', th: 'สมาชิก' },
   adminOnly: { en: 'This page is for admins only.', th: 'หน้านี้สำหรับผู้ดูแลระบบเท่านั้น' },
+  edit: { en: 'Edit', th: 'แก้ไข' },
+  save: { en: 'Save', th: 'บันทึก' },
+  newPassword: { en: 'New password (blank = unchanged)', th: 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)' },
+  confirmDeleteAccount1: { en: 'Delete this account?', th: 'ลบบัญชีนี้?' },
+  confirmDeleteAccount2: {
+    en: 'Are you SURE? This cannot be undone — their tasks, comments and files will be transferred to you.',
+    th: 'แน่ใจหรือไม่? การลบย้อนกลับไม่ได้ — งาน ความคิดเห็น และไฟล์ของบุคคลนี้จะถูกโอนมาที่คุณ',
+  },
   authTagline: {
     en: 'Assign work, track progress, get things done — together.',
     th: 'มอบหมายงาน ติดตามความคืบหน้า ทำงานให้เสร็จ — ไปด้วยกัน',
@@ -51,6 +59,7 @@ const dict = {
   // My Tasks page
   allCaughtUp: { en: 'All caught up — no open tasks assigned to you.', th: 'เยี่ยม! ไม่มีงานค้างที่มอบหมายให้คุณ' },
   allProjects: { en: 'All projects', th: 'ทุกโปรเจกต์' },
+  mainTasks: { en: 'Tasks', th: 'งานหลัก' },
 
   // Projects
   newProject: { en: 'New project', th: 'สร้างโปรเจกต์' },

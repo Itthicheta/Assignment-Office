@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
-import { canTickChecked, canTickDone, isSelfTask } from '../lib/can'
+import { canTickChecked, canTickDone } from '../lib/can'
 import { setTickChecked, setTickDone } from '../lib/taskActions'
 import type { Task } from '../lib/types'
 
@@ -36,6 +36,12 @@ export default function TaskTicks({
     onChanged()
   }
 
+  // One box when worker = checker: tasks assigned to an admin; subtasks
+  // assigned to the main task's assignee themself.
+  const workerChecker = task.parent_id
+    ? !!task.assignee_id && task.assignee_id === parent?.assignee_id
+    : profiles.find((p) => p.id === task.assignee_id)?.role === 'admin'
+
   return (
     <span className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
       <label
@@ -51,7 +57,7 @@ export default function TaskTicks({
         />
         <span className="hidden text-slate-500 lg:inline">{t('tickWork')}</span>
       </label>
-      {!(task.parent_id && isSelfTask(task)) && (
+      {!workerChecker && (
         <label
           title={t('tickCheck')}
           className={`flex items-center gap-1 text-xs ${canTickChecked(profile, task, parent) ? 'cursor-pointer' : 'opacity-50'}`}

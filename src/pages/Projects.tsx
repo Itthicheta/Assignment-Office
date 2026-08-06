@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { DndContext, PointerSensor, TouchSensor, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { supabase } from '../lib/supabase'
@@ -186,35 +186,69 @@ export default function Projects() {
   const groupProjects = (sectionId: string | null) =>
     projects.filter((p) => p.section_id === sectionId).sort((a, b) => a.position - b.position)
 
-  const onDragEnd = (group: Project[]) => async (e: DragEndEvent) => {
+  // Single drag context across all sections: dropping on a project inserts
+  // next to it (moving sections if needed); dropping on a section's empty
+  // area appends to that section.
+  const onDragEnd = async (e: DragEndEvent) => {
     const { active, over } = e
     if (!over || active.id === over.id) return
-    const oldIndex = group.findIndex((x) => x.id === active.id)
-    const newIndex = group.findIndex((x) => x.id === over.id)
-    if (oldIndex < 0 || newIndex < 0) return
-    const reordered = arrayMove(group, oldIndex, newIndex)
-    const before = reordered[newIndex - 1]?.position
-    const after = reordered[newIndex + 1]?.position
-    const newPos =
-      before !== undefined && after !== undefined
-        ? (before + after) / 2
-        : before !== undefined
-          ? before + 1
-          : after !== undefined
-            ? after - 1
-            : 0
-    setProjects((ps) => ps.map((x) => (x.id === active.id ? { ...x, position: newPos } : x)))
-    await supabase.from('projects').update({ position: newPos }).eq('id', active.id)
+    const activeP = projects.find((x) => x.id === active.id)
+    if (!activeP) return
+
+    let targetSec: string | null
+    let newPos: number
+
+    if (String(over.id).startsWith('sec:')) {
+      targetSec = over.id === 'sec:none' ? null : String(over.id).slice(4)
+      if (targetSec === activeP.section_id) return
+      const group = groupProjects(targetSec)
+      newPos = group.length ? Math.max(...group.map((p) => p.position)) + 1 : 0
+    } else {
+      const overP = projects.find((x) => x.id === over.id)
+      if (!overP) return
+      targetSec = overP.section_id
+      if (targetSec === activeP.section_id) {
+        const group = groupProjects(targetSec)
+        const oldIndex = group.findIndex((x) => x.id === active.id)
+        const newIndex = group.findIndex((x) => x.id === over.id)
+        if (oldIndex < 0 || newIndex < 0) return
+        const reordered = arrayMove(group, oldIndex, newIndex)
+        const before = reordered[newIndex - 1]?.position
+        const after = reordered[newIndex + 1]?.position
+        newPos =
+          before !== undefined && after !== undefined
+            ? (before + after) / 2
+            : before !== undefined
+              ? before + 1
+              : after !== undefined
+                ? after - 1
+                : 0
+      } else {
+        newPos = overP.position - 0.5
+      }
+    }
+
+    setProjects((ps) => ps.map((x) => (x.id === active.id ? { ...x, position: newPos, section_id: targetSec } : x)))
+    await supabase.from('projects').update({ position: newPos, section_id: targetSec }).eq('id', active.id)
   }
 
   const ungrouped = useMemo(() => groupProjects(null), [projects])
 
   if (!loaded) return <p className="text-slate-400">{t('loading')}</p>
 
-  const renderGroup = (group: Project[]) => (
-    <DndContext sensors={sensors} onDragEnd={onDragEnd(group)}>
+  const SectionDrop = ({ sectionId, children }: { sectionId: string | null; children: ReactNode }) => {
+    const { setNodeRef, isOver } = useDroppable({ id: `sec:${sectionId ?? 'none'}` })
+    return (
+      <div ref={setNodeRef} className={isOver ? 'rounded-xl ring-2 ring-indigo-200' : ''}>
+        {children}
+      </div>
+    )
+  }
+
+  const renderGroup = (sectionId: string | null, group: Project[]) => (
+    <SectionDrop sectionId={sectionId}>
       <SortableContext items={group.map((x) => x.id)} strategy={rectSortingStrategy}>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid min-h-14 gap-3 sm:grid-cols-2">
           {group.map((p) => (
             <ProjectCard
               key={p.id}
@@ -227,10 +261,11 @@ export default function Projects() {
           ))}
         </div>
       </SortableContext>
-    </DndContext>
+    </SectionDrop>
   )
 
   return (
+    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold">{t('projects')}</h1>
@@ -327,21 +362,22 @@ export default function Projects() {
               )}
               <span className="text-xs text-slate-400">({group.length})</span>
             </div>
-            {renderGroup(group)}
+            {renderGroup(section.id, group)}
           </section>
         )
       })}
 
-      {ungrouped.length > 0 && (
+      {(ungrouped.length > 0 || sections.length > 0) && (
         <section>
           {sections.length > 0 && (
             <h2 className="mb-2 text-sm font-bold text-slate-500">
               {t('noSection')} <span className="text-xs font-normal text-slate-400">({ungrouped.length})</span>
             </h2>
           )}
-          {renderGroup(ungrouped)}
+          {renderGroup(null, ungrouped)}
         </section>
       )}
     </div>
+    </DndContext>
   )
 }

@@ -78,8 +78,17 @@ export default function MyTasks() {
     }
   })
   const [filterOpen, setFilterOpen] = useState(false)
+  const [typeFilter, setTypeFilter] = useState<{ main: boolean; subs: boolean }>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('reviews_type_filter') ?? '') || { main: true, subs: true }
+    } catch {
+      return { main: true, subs: true }
+    }
+  })
+  const [typeFilterOpen, setTypeFilterOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
+  const typeFilterRef = useRef<HTMLDivElement>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -109,8 +118,8 @@ export default function MyTasks() {
     }
     setMine(mineRows)
 
-    // "Waiting for my check": admin checks every task; members check the
-    // subtasks under tasks assigned to them.
+    // "Waiting for my check": admin checks every task and subtask; members
+    // check the subtasks under tasks assigned to them.
     let reviewRows: TaskWithProject[] = []
     if (profile?.role === 'admin') {
       const { data } = await supabase
@@ -119,8 +128,16 @@ export default function MyTasks() {
         .eq('status', 'in_progress')
         .eq('tick_done', true)
         .eq('tick_checked', false)
-        .is('parent_id', null)
-      reviewRows = ((data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null }))
+      reviewRows = ((data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null as { title: string } | null }))
+      const revParentIds = [...new Set(reviewRows.map((x) => x.parent_id).filter(Boolean))] as string[]
+      if (revParentIds.length) {
+        const { data: parents } = await supabase.from('tasks').select('id, title').in('id', revParentIds)
+        const titleOf: Record<string, string> = {}
+        for (const row of parents ?? []) titleOf[row.id] = row.title
+        for (const row of reviewRows) {
+          if (row.parent_id && titleOf[row.parent_id]) row.parent = { title: titleOf[row.parent_id] }
+        }
+      }
     } else {
       const myTop = mineRows.filter((x) => !x.parent_id)
       if (myTop.length) {
@@ -152,16 +169,22 @@ export default function MyTasks() {
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false)
+      if (typeFilterRef.current && !typeFilterRef.current.contains(e.target as Node)) setTypeFilterOpen(false)
     }
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
+  const setTypeFilterPersist = (v: { main: boolean; subs: boolean }) => {
+    setTypeFilter(v)
+    localStorage.setItem('reviews_type_filter', JSON.stringify(v))
+  }
+
   const myProjects = useMemo(() => {
     const map = new Map<string, { id: string; name: string; color: string; created_at: string }>()
-    for (const task of mine) if (task.project) map.set(task.project.id, task.project)
+    for (const task of [...mine, ...reviews]) if (task.project) map.set(task.project.id, task.project)
     return [...map.values()].sort((x, y) => x.created_at.localeCompare(y.created_at))
-  }, [mine])
+  }, [mine, reviews])
 
   const activeFilter = filter.length ? filter : myProjects.map((p) => p.id)
 
@@ -231,33 +254,74 @@ export default function MyTasks() {
         )}
       </div>
 
-      {reviews.length > 0 && (
-        <section>
-          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-600">
-            👀 {t('waitingMyCheck')} <span className="text-xs">({reviews.length})</span>
-          </h2>
-          <div className="space-y-2">
-            {reviews.map((task) => {
-              const assignee = profiles.find((p) => p.id === task.assignee_id)
-              return (
-                <Link
-                  key={task.id}
-                  to={`/projects/${task.project_id}?task=${task.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 hover:border-amber-400"
+      {reviews.length > 0 && (() => {
+        const shown = reviews
+          .filter((task) => activeFilter.includes(task.project_id))
+          .filter((task) => (task.parent_id ? typeFilter.subs : typeFilter.main))
+        return (
+          <section>
+            <div className="mb-2 flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-amber-600">
+                {t('waitingMyCheck')} <span className="text-xs">({shown.length})</span>
+              </h2>
+              <div className="relative ml-auto" ref={typeFilterRef}>
+                <button
+                  onClick={() => setTypeFilterOpen(!typeFilterOpen)}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
                 >
-                  {assignee && <Avatar name={assignee.full_name} size={7} />}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">
-                      {task.parent ? `${task.parent.title} – ${task.title}` : task.title}
+                  {typeFilter.main && typeFilter.subs
+                    ? `${t('mainTasks')} + ${t('subtasks')}`
+                    : typeFilter.main
+                      ? t('mainTasks')
+                      : t('subtasks')} ▾
+                </button>
+                {typeFilterOpen && (
+                  <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={typeFilter.main}
+                        onChange={() => setTypeFilterPersist({ ...typeFilter, main: !typeFilter.main })}
+                        className="h-4 w-4 accent-indigo-600"
+                      />
+                      {t('mainTasks')}
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={typeFilter.subs}
+                        onChange={() => setTypeFilterPersist({ ...typeFilter, subs: !typeFilter.subs })}
+                        className="h-4 w-4 accent-indigo-600"
+                      />
+                      {t('subtasks')}
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {shown.map((task) => {
+                const assignee = profiles.find((p) => p.id === task.assignee_id)
+                return (
+                  <Link
+                    key={task.id}
+                    to={`/projects/${task.project_id}?task=${task.id}`}
+                    className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 hover:border-amber-400"
+                  >
+                    {assignee && <Avatar name={assignee.full_name} size={7} />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {task.parent ? `${task.parent.title} – ${task.title}` : task.title}
+                      </span>
+                      <span className="block truncate text-xs text-slate-400">{task.project?.name}</span>
                     </span>
-                    <span className="block truncate text-xs text-slate-400">{task.project?.name}</span>
-                  </span>
-                </Link>
-              )
-            })}
-          </div>
-        </section>
-      )}
+                  </Link>
+                )
+              })}
+            </div>
+          </section>
+        )
+      })()}
 
       {mine.length === 0 && reviews.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">

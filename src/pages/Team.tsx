@@ -14,6 +14,11 @@ export default function Team() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [busy, setBusy] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [eUsername, setEUsername] = useState('')
+  const [eFullName, setEFullName] = useState('')
+  const [ePassword, setEPassword] = useState('')
+  const [ePasswordConfirm, setEPasswordConfirm] = useState('')
 
   if (profile?.role !== 'admin') {
     return <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">{t('adminOnly')}</p>
@@ -57,6 +62,61 @@ export default function Team() {
     refreshProfiles()
   }
 
+  const invokeManage = async (body: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke('manage-user', { body })
+    if (error) {
+      let message = error.message
+      try {
+        const b = await (error as { context?: Response }).context?.json()
+        if (b?.error) message = b.error
+      } catch { /* keep default message */ }
+      return message
+    }
+    if (data?.error) return data.error as string
+    return null
+  }
+
+  const saveEdit = async (id: string) => {
+    setError('')
+    setSuccess('')
+    if (ePassword && ePassword !== ePasswordConfirm) {
+      setError(t('passwordMismatch'))
+      return
+    }
+    setBusy(true)
+    const body: Record<string, unknown> = { action: 'update', user_id: id }
+    if (eUsername.trim()) body.username = eUsername.trim().toLowerCase()
+    if (eFullName.trim()) body.full_name = eFullName.trim()
+    if (ePassword) body.password = ePassword
+    const err = await invokeManage(body)
+    if (err) setError(err)
+    else {
+      setEditingId(null)
+      refreshProfiles()
+    }
+    setBusy(false)
+  }
+
+  const deleteAccount = async (id: string) => {
+    if (!window.confirm(t('confirmDeleteAccount1'))) return
+    if (!window.confirm(t('confirmDeleteAccount2'))) return
+    setBusy(true)
+    const err = await invokeManage({ action: 'delete', user_id: id })
+    if (err) alert(err)
+    refreshProfiles()
+    setBusy(false)
+  }
+
+  const startEdit = (id: string, uname: string | null, fname: string) => {
+    setEditingId(id)
+    setEUsername(uname ?? '')
+    setEFullName(fname)
+    setEPassword('')
+    setEPasswordConfirm('')
+    setError('')
+    setSuccess('')
+  }
+
   const inputCls =
     'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none'
 
@@ -92,25 +152,100 @@ export default function Team() {
 
       <section className="space-y-2">
         {profiles.map((p) => (
-          <div key={p.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <Avatar name={p.full_name} size={9} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium">{p.full_name}</span>
-              <span className="block truncate text-xs text-slate-400">@{p.username ?? '—'}</span>
-            </span>
-            {p.id === profile.id ? (
-              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
-                {p.role === 'admin' ? t('adminRole') : t('memberRole')}
+          <div key={p.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <Avatar name={p.full_name} size={9} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{p.full_name}</span>
+                <span className="block truncate text-xs text-slate-400">@{p.username ?? '—'}</span>
               </span>
-            ) : (
-              <select
-                value={p.role}
-                onChange={(e) => changeRole(p.id, e.target.value as 'admin' | 'member')}
-                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none"
+              {p.id === profile.id ? (
+                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                  {p.role === 'admin' ? t('adminRole') : t('memberRole')}
+                </span>
+              ) : (
+                <select
+                  value={p.role}
+                  onChange={(e) => changeRole(p.id, e.target.value as 'admin' | 'member')}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none"
+                >
+                  <option value="member">{t('memberRole')}</option>
+                  <option value="admin">{t('adminRole')}</option>
+                </select>
+              )}
+              <button
+                onClick={() => (editingId === p.id ? setEditingId(null) : startEdit(p.id, p.username, p.full_name))}
+                className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
               >
-                <option value="member">{t('memberRole')}</option>
-                <option value="admin">{t('adminRole')}</option>
-              </select>
+                ✏️ {t('edit')}
+              </button>
+              {p.id !== profile.id && (
+                <button
+                  onClick={() => deleteAccount(p.id)}
+                  disabled={busy}
+                  title={t('confirmDeleteAccount1')}
+                  className="rounded-md border border-red-100 px-2 py-1 text-xs text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                >
+                  🗑
+                </button>
+              )}
+            </div>
+
+            {editingId === p.id && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  saveEdit(p.id)
+                }}
+                className="mt-3 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2"
+              >
+                <input
+                  value={eFullName}
+                  onChange={(e) => setEFullName(e.target.value)}
+                  placeholder={t('fullName')}
+                  className={inputCls}
+                />
+                <input
+                  value={eUsername}
+                  onChange={(e) => setEUsername(e.target.value)}
+                  placeholder={t('username')}
+                  pattern="[a-zA-Z0-9_.\-]{3,30}"
+                  className={inputCls}
+                />
+                <input
+                  type="password"
+                  value={ePassword}
+                  onChange={(e) => setEPassword(e.target.value)}
+                  placeholder={t('newPassword')}
+                  autoComplete="new-password"
+                  className={inputCls}
+                />
+                <input
+                  type="password"
+                  value={ePasswordConfirm}
+                  onChange={(e) => setEPasswordConfirm(e.target.value)}
+                  placeholder={t('confirmPassword')}
+                  autoComplete="new-password"
+                  disabled={!ePassword}
+                  className={inputCls}
+                />
+                {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
+                <div className="flex gap-2 sm:col-span-2">
+                  <button
+                    disabled={busy}
+                    className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {t('save')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(null)}
+                    className="rounded-lg px-4 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
+                  >
+                    {t('cancel')}
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         ))}

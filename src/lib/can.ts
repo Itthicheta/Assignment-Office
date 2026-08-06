@@ -5,8 +5,6 @@ import type { Profile, Task } from './types'
 
 export const isAdmin = (p: Profile | null) => p?.role === 'admin'
 
-export const isSelfTask = (t: Task) => !!t.assignee_id && t.created_by === t.assignee_id
-
 // Full field control over a TOP-LEVEL task: admin or its creator
 export const canEditFields = (p: Profile | null, t: Task) =>
   !!p && (isAdmin(p) || t.created_by === p.id)
@@ -39,11 +37,13 @@ export const canTickDone = (p: Profile | null, t: Task, _parent?: Task | null) =
   return t.assignee_id === p.id && !t.tick_checked
 }
 
-// Checked tick: tasks → admin only (every task needs it, even self-tasks);
-// subtasks → main task's assignee + admin (self-assigned subtasks skip it)
+// Checked tick: tasks → admin only; subtasks → main task's assignee + admin.
+// Items where worker = checker (task assigned to an admin; subtask assigned
+// to the main assignee themself) complete with the single Done tick and
+// show no Checked box (see TaskTicks / derive_task_status).
 export const canTickChecked = (p: Profile | null, t: Task, parent?: Task | null) => {
   if (!p || !t.tick_done) return false
-  if (t.parent_id) return !isSelfTask(t) && canManageSubtasks(p, parent!)
+  if (t.parent_id) return t.assignee_id !== parent?.assignee_id && canManageSubtasks(p, parent!)
   return isAdmin(p)
 }
 
