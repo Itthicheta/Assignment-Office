@@ -4,14 +4,16 @@ import { supabase } from './supabase'
 export async function notify(opts: {
   userId: string | null | undefined
   actorId: string
-  taskId: string
-  type: 'assigned' | 'comment' | 'review' | 'returned' | 'done' | 'new_task' | 'task_approved'
+  taskId?: string
+  type:
+    | 'assigned' | 'comment' | 'review' | 'returned' | 'done'
+    | 'new_task' | 'task_approved' | 'new_routine' | 'routine_approved'
 }) {
   if (!opts.userId || opts.userId === opts.actorId) return
   await supabase.from('notifications').insert({
     user_id: opts.userId,
     actor_id: opts.actorId,
-    task_id: opts.taskId,
+    task_id: opts.taskId ?? null,
     type: opts.type,
   })
 }

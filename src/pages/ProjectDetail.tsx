@@ -9,6 +9,7 @@ import { useI18n } from '../lib/i18n'
 import { logActivity, notify } from '../lib/notify'
 import { assigneeChoices, canEditFields, canManageSubtasks, canReorderProject, isAdmin } from '../lib/can'
 import { PriorityBadge } from '../components/Badges'
+import { fmtDue, isOverdue } from '../lib/due'
 import Avatar from '../components/Avatar'
 import TaskTicks from '../components/TaskTicks'
 import ApproveControl from '../components/ApproveControl'
@@ -16,7 +17,6 @@ import TaskDrawer from '../components/TaskDrawer'
 import FilesSection from '../components/FilesSection'
 import type { Profile, Project, Task } from '../lib/types'
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
 
 function AssigneeSelect({
   task,
@@ -44,7 +44,7 @@ function AssigneeSelect({
       value={task.assignee_id ?? ''}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => onAssign(e.target.value)}
-      className="max-w-28 rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 focus:border-indigo-400 focus:outline-none"
+      className="max-w-28 rounded-lg border border-slate-700 bg-slate-900 px-1.5 py-1 text-xs text-slate-300 focus:border-indigo-400 focus:outline-none"
     >
       <option value="">{t('unassigned')}</option>
       {choices.map((p) => (
@@ -92,23 +92,23 @@ function TaskRow({
     id: task.id,
     disabled: !draggable,
   })
-  const overdue = task.due_date && task.due_date < todayStr() && task.status !== 'done'
+  const overdue = isOverdue(task)
   const waitingCheck = task.tick_done && !task.tick_checked && task.status !== 'done'
 
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
       <div
         onClick={onOpen}
-        className={`flex w-full cursor-pointer items-center gap-2 rounded-xl border bg-white px-3 py-3 text-left shadow-sm hover:border-indigo-300 ${
+        className={`flex w-full cursor-pointer items-center gap-2 rounded-xl border bg-slate-900 px-3 py-3 text-left shadow-sm hover:border-indigo-700 ${
           isDragging ? 'z-10 opacity-70' : ''
-        } ${waitingCheck ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}
+        } ${waitingCheck ? 'border-amber-300 bg-amber-950/40' : 'border-slate-700'}`}
       >
         {draggable && (
           <span
             {...attributes}
             {...listeners}
             onClick={(e) => e.stopPropagation()}
-            className="cursor-grab touch-none px-1 text-slate-300 select-none active:cursor-grabbing"
+            className="cursor-grab touch-none px-1 text-slate-600 select-none active:cursor-grabbing"
           >
             ⠿
           </span>
@@ -119,7 +119,7 @@ function TaskRow({
               e.stopPropagation()
               onToggleExpand()
             }}
-            className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 text-sm font-semibold text-indigo-600 hover:bg-indigo-100"
+            className="flex items-center gap-1 rounded-lg bg-indigo-950/60 px-2 py-1 text-sm font-semibold text-indigo-400 hover:bg-indigo-900"
           >
             <span className={`inline-block text-base leading-none transition-transform ${expanded ? 'rotate-90' : ''}`}>▸</span>
             <span className="text-xs">{subtasks.filter((s) => s.status === 'done').length}/{subtasks.length}</span>
@@ -132,8 +132,8 @@ function TaskRow({
         </span>
         <PriorityBadge priority={task.priority} />
         {task.due_date && (
-          <span className={`hidden text-xs whitespace-nowrap sm:inline ${overdue ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
-            {task.due_date}
+          <span className={`hidden text-xs whitespace-nowrap sm:inline ${overdue ? 'font-semibold text-red-400' : 'text-slate-400'}`}>
+            {fmtDue(task)}
           </span>
         )}
         <TaskTicks task={task} onChanged={onChanged} />
@@ -147,12 +147,17 @@ function TaskRow({
             <div
               key={sub.id}
               onClick={() => onOpenSub(sub)}
-              className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-100 bg-white px-3 py-2 hover:border-indigo-200"
+              className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 hover:border-indigo-700"
             >
-              <span className="text-slate-300">↳</span>
+              <span className="text-slate-600">↳</span>
               <span className={`min-w-0 flex-1 truncate text-sm ${sub.status === 'done' ? 'text-slate-400 line-through' : ''}`}>
                 {sub.title}
               </span>
+              {sub.due_date && (
+                <span className={`hidden text-[10px] whitespace-nowrap sm:inline ${isOverdue(sub) ? 'font-semibold text-red-400' : 'text-slate-400'}`}>
+                  {fmtDue(sub)}
+                </span>
+              )}
               <TaskTicks task={sub} parent={task} onChanged={onChanged} />
               <AssigneeSelect task={sub} parent={task} profiles={profiles} onAssign={(a) => onAssign(sub, a)} />
             </div>
@@ -171,7 +176,7 @@ function TaskRow({
                 value={newSub}
                 onChange={(e) => setNewSub(e.target.value)}
                 placeholder={`+ ${t('addSubtask')}`}
-                className="w-full rounded-lg border border-dashed border-indigo-200 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+                className="w-full rounded-lg border border-dashed border-indigo-800 bg-slate-900 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
               />
             </form>
           )}
@@ -232,9 +237,15 @@ export default function ProjectDetail() {
   const addTask = async (e: FormEvent) => {
     e.preventDefault()
     if (!session || !id || !newTitle.trim()) return
+    // member-created tasks auto-assign to their creator
     const { data, error } = await supabase
       .from('tasks')
-      .insert({ project_id: id, title: newTitle.trim(), created_by: session.user.id })
+      .insert({
+        project_id: id,
+        title: newTitle.trim(),
+        created_by: session.user.id,
+        assignee_id: isAdmin(profile) ? null : session.user.id,
+      })
       .select()
       .single()
     if (error) {
@@ -358,24 +369,48 @@ export default function ProjectDetail() {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <Link to="/projects" className="text-slate-400 hover:text-slate-600">←</Link>
+        <Link to="/projects" className="text-slate-400 hover:text-slate-300">←</Link>
         <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: project.color }} />
         {canEditProject ? (
-          <input
-            value={nameEdit}
-            onChange={(e) => setNameEdit(e.target.value)}
-            onBlur={saveProjectName}
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent text-xl font-bold hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:outline-none"
-          />
+          <>
+            <input
+              value={nameEdit}
+              onChange={(e) => setNameEdit(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveProjectName()}
+              className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent text-xl font-bold hover:border-slate-600 focus:border-indigo-400 focus:bg-slate-800 focus:outline-none"
+            />
+            {nameEdit.trim() !== project.name && nameEdit.trim() !== '' && (
+              <button
+                onClick={saveProjectName}
+                className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-white hover:bg-indigo-700"
+              >
+                ✓ {t('save')}
+              </button>
+            )}
+          </>
         ) : (
           <h1 className="text-xl font-bold">{project.name}</h1>
         )}
+        {isAdmin(profile) && (
+          <button
+            onClick={async () => {
+              if (!window.confirm(t('confirmDeleteProject1'))) return
+              if (!window.confirm(t('confirmDeleteProject2'))) return
+              const { error } = await supabase.from('projects').delete().eq('id', project.id)
+              if (error) alert(error.message)
+              else window.location.href = '/projects'
+            }}
+            title={t('deleteProject')}
+            className="rounded-md border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950 hover:text-red-400"
+          >
+            🗑
+          </button>
+        )}
       </div>
-      {project.description && <p className="text-sm text-slate-500">{project.description}</p>}
+      {project.description && <p className="text-sm text-slate-400">{project.description}</p>}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-        <FilesSection projectId={project.id} taskId={null} />
+      <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-sm">
+        <FilesSection projectId={project.id} taskId={null} canUpload={isAdmin(profile)} />
       </div>
 
       <form onSubmit={addTask}>
@@ -383,19 +418,19 @@ export default function ProjectDetail() {
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder={`+ ${t('addTask')}`}
-          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none"
+          className="w-full rounded-xl border border-slate-600 bg-slate-900 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none"
         />
       </form>
 
       {inProgress.length === 0 && doneTasks.length === 0 && (
-        <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
+        <p className="rounded-xl border border-dashed border-slate-600 p-8 text-center text-sm text-slate-400">
           {t('noTasks')}
         </p>
       )}
 
       {inProgress.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-blue-700">
+          <h2 className="mb-2 text-sm font-semibold text-blue-300">
             {t('in_progress')} <span className="text-xs font-normal text-slate-400">({inProgress.length})</span>
           </h2>
           <DndContext sensors={sensors} onDragEnd={onDragEnd}>
@@ -408,7 +443,7 @@ export default function ProjectDetail() {
 
       {doneTasks.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-emerald-700">
+          <h2 className="mb-2 text-sm font-semibold text-emerald-300">
             {t('done')} <span className="text-xs font-normal text-slate-400">({doneTasks.length})</span>
           </h2>
           <div className="space-y-2">{doneTasks.map((task) => renderRow(task, false))}</div>

@@ -40,26 +40,26 @@ function ProjectCard({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-300 ${isDragging ? 'z-10 opacity-70' : ''}`}
+      className={`relative rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-sm transition hover:border-indigo-700 ${isDragging ? 'z-10 opacity-70' : ''}`}
     >
       <div className="flex items-center gap-2">
         {admin && (
           <span
             {...attributes}
             {...listeners}
-            className="-ml-1 cursor-grab touch-none text-slate-300 select-none active:cursor-grabbing"
+            className="-ml-1 cursor-grab touch-none text-slate-600 select-none active:cursor-grabbing"
           >
             ⠿
           </span>
         )}
         <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: project.color }} />
-        <Link to={`/projects/${project.id}`} className="min-w-0 flex-1 truncate font-semibold hover:text-indigo-600">
+        <Link to={`/projects/${project.id}`} className="min-w-0 flex-1 truncate font-semibold hover:text-indigo-400">
           {project.name}
         </Link>
       </div>
-      {project.description && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{project.description}</p>}
+      {project.description && <p className="mt-1 line-clamp-2 text-xs text-slate-400">{project.description}</p>}
       <div className="mt-3">
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: project.color }} />
         </div>
         <div className="mt-1 flex items-center justify-between">
@@ -70,7 +70,7 @@ function ProjectCard({
             <select
               value={project.section_id ?? ''}
               onChange={(e) => onMove(project, e.target.value)}
-              className="rounded-md border border-slate-200 bg-white px-1 py-0.5 text-[10px] text-slate-400 focus:outline-none"
+              className="rounded-md border border-slate-700 bg-slate-900 px-1 py-0.5 text-[10px] text-slate-400 focus:outline-none"
               title={t('section')}
             >
               <option value="">{t('noSection')}</option>
@@ -239,7 +239,7 @@ export default function Projects() {
   const SectionDrop = ({ sectionId, children }: { sectionId: string | null; children: ReactNode }) => {
     const { setNodeRef, isOver } = useDroppable({ id: `sec:${sectionId ?? 'none'}` })
     return (
-      <div ref={setNodeRef} className={isOver ? 'rounded-xl ring-2 ring-indigo-200' : ''}>
+      <div ref={setNodeRef} className={isOver ? 'rounded-xl ring-2 ring-indigo-800' : ''}>
         {children}
       </div>
     )
@@ -273,7 +273,7 @@ export default function Projects() {
           <div className="flex gap-2">
             <button
               onClick={() => setShowSectionForm(!showSectionForm)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-800"
             >
               + {t('newSection')}
             </button>
@@ -288,14 +288,14 @@ export default function Projects() {
       </div>
 
       {showSectionForm && (
-        <form onSubmit={createSection} className="flex gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <form onSubmit={createSection} className="flex gap-2 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-sm">
           <input
             autoFocus
             required
             value={newSection}
             onChange={(e) => setNewSection(e.target.value)}
             placeholder={t('sectionName')}
-            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="flex-1 rounded-lg border border-slate-600 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
           <button className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700">
             {t('create')}
@@ -304,21 +304,21 @@ export default function Projects() {
       )}
 
       {showForm && (
-        <form onSubmit={createProject} className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <form onSubmit={createProject} className="space-y-2 rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-sm">
           <input
             autoFocus
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t('projectName')}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-600 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder={t('projectDescription')}
             rows={2}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-600 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
           <div className="flex gap-2">
             <button className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700">
@@ -327,7 +327,7 @@ export default function Projects() {
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="rounded-lg px-4 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
+              className="rounded-lg px-4 py-1.5 text-sm text-slate-400 hover:bg-slate-800"
             >
               {t('cancel')}
             </button>
@@ -336,7 +336,7 @@ export default function Projects() {
       )}
 
       {projects.length === 0 && !showForm && (
-        <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
+        <p className="rounded-xl border border-dashed border-slate-600 p-8 text-center text-sm text-slate-400">
           {t('noProjects')}
         </p>
       )}
@@ -353,12 +353,12 @@ export default function Projects() {
                     onChange={(e) => setSectionEdits((s) => ({ ...s, [section.id]: e.target.value }))}
                     onBlur={() => renameSection(section)}
                     onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                    className="rounded-md border border-transparent bg-transparent text-sm font-bold text-slate-700 hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:outline-none"
+                    className="rounded-md border border-transparent bg-transparent text-sm font-bold text-slate-200 hover:border-slate-600 focus:border-indigo-400 focus:bg-slate-800 focus:outline-none"
                   />
-                  <button onClick={() => deleteSection(section)} className="text-slate-300 hover:text-red-500">✕</button>
+                  <button onClick={() => deleteSection(section)} className="text-slate-600 hover:text-red-500">✕</button>
                 </>
               ) : (
-                <h2 className="text-sm font-bold text-slate-700">{section.name}</h2>
+                <h2 className="text-sm font-bold text-slate-200">{section.name}</h2>
               )}
               <span className="text-xs text-slate-400">({group.length})</span>
             </div>
@@ -370,7 +370,7 @@ export default function Projects() {
       {(ungrouped.length > 0 || sections.length > 0) && (
         <section>
           {sections.length > 0 && (
-            <h2 className="mb-2 text-sm font-bold text-slate-500">
+            <h2 className="mb-2 text-sm font-bold text-slate-400">
               {t('noSection')} <span className="text-xs font-normal text-slate-400">({ungrouped.length})</span>
             </h2>
           )}

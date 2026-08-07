@@ -55,7 +55,7 @@ export default function TaskTicks({
           onChange={toggleDone}
           className="h-4 w-4 accent-blue-600"
         />
-        <span className="hidden text-slate-500 lg:inline">{t('tickWork')}</span>
+        <span className="hidden text-slate-400 lg:inline">{t('tickWork')}</span>
       </label>
       {!workerChecker && (
         <label
@@ -69,7 +69,7 @@ export default function TaskTicks({
             onChange={toggleChecked}
             className="h-4 w-4 accent-emerald-600"
           />
-          <span className="hidden text-slate-500 lg:inline">{t('tickCheck')}</span>
+          <span className="hidden text-slate-400 lg:inline">{t('tickCheck')}</span>
         </label>
       )}
     </span>

@@ -16,10 +16,10 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
   render() {
     if (!this.state.error) return this.props.children
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-        <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
+      <div className="flex min-h-screen items-center justify-center bg-slate-800/50 px-4">
+        <div className="w-full max-w-md rounded-2xl border border-red-900 bg-slate-900 p-6 text-center shadow-sm">
           <p className="text-3xl">😵</p>
-          <h1 className="mt-2 text-lg font-bold text-slate-700">Something went wrong</h1>
+          <h1 className="mt-2 text-lg font-bold text-slate-200">Something went wrong</h1>
           <p className="mt-1 text-xs break-all text-slate-400">{this.state.error.message}</p>
           <button
             onClick={() => location.reload()}

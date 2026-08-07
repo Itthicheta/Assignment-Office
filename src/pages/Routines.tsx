@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { isAdmin } from '../lib/can'
+import { notify } from '../lib/notify'
 import { isDueOn, recentDueDates, toDateStr } from '../lib/routineDates'
 import Avatar from '../components/Avatar'
 import type { Routine, RoutineCompletion } from '../lib/types'
@@ -51,20 +52,28 @@ export default function Routines() {
 
   const createRoutine = async (e: FormEvent) => {
     e.preventDefault()
-    if (!session || !title.trim() || !assignee) return
+    if (!session || !title.trim()) return
+    if (admin && !assignee) return
     if (repeatType === 'weekly' && weekdays.length === 0) return
     if (repeatType === 'monthly' && monthdays.length === 0) return
+    // members create routines for themselves, pending admin approval
     const { error } = await supabase.from('routines').insert({
       title: title.trim(),
-      assignee_id: assignee,
+      assignee_id: admin ? assignee : session.user.id,
       repeat_type: repeatType,
       weekdays: repeatType === 'weekly' ? weekdays : [],
       monthdays: repeatType === 'monthly' ? monthdays : [],
       created_by: session.user.id,
+      approved: admin,
     })
     if (error) {
       alert(error.message)
       return
+    }
+    if (!admin) {
+      for (const adm of profiles.filter((p) => p.role === 'admin')) {
+        await notify({ userId: adm.id, actorId: session.user.id, type: 'new_routine' })
+      }
     }
     setTitle('')
     setAssignee('')
@@ -109,7 +118,7 @@ export default function Routines() {
 
   const chip = (selected: boolean) =>
     `cursor-pointer rounded-lg border px-2 py-1 text-xs font-medium select-none ${
-      selected ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+      selected ? 'border-indigo-500 bg-indigo-950/60 text-indigo-300' : 'border-slate-700 text-slate-400 hover:bg-slate-800'
     }`
 
   if (!loaded) return <p className="text-slate-400">{t('loading')}</p>
@@ -118,18 +127,16 @@ export default function Routines() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">{t('routines')}</h1>
-        {admin && (
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
-          >
-            + {t('newRoutine')}
-          </button>
-        )}
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
+        >
+          + {t('newRoutine')}
+        </button>
       </div>
 
       {showForm && (
-        <form onSubmit={createRoutine} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <form onSubmit={createRoutine} className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-sm">
           <div className="grid gap-2 sm:grid-cols-2">
             <input
               autoFocus
@@ -137,19 +144,25 @@ export default function Routines() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={t('routineTitle')}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-600 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
             />
-            <select
-              required
-              value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-            >
-              <option value="">{t('assignee')}…</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.full_name}</option>
-              ))}
-            </select>
+            {admin ? (
+              <select
+                required
+                value={assignee}
+                onChange={(e) => setAssignee(e.target.value)}
+                className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="">{t('assignee')}…</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.full_name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="flex items-center text-sm text-slate-400">
+                {t('assignee')}: {profile?.full_name}
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-4 text-sm">
             <label className="flex cursor-pointer items-center gap-1.5">
@@ -190,7 +203,7 @@ export default function Routines() {
             <button className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700">
               {t('create')}
             </button>
-            <button type="button" onClick={() => setShowForm(false)} className="rounded-lg px-4 py-1.5 text-sm text-slate-500 hover:bg-slate-100">
+            <button type="button" onClick={() => setShowForm(false)} className="rounded-lg px-4 py-1.5 text-sm text-slate-400 hover:bg-slate-800">
               {t('cancel')}
             </button>
           </div>
@@ -198,7 +211,7 @@ export default function Routines() {
       )}
 
       {routines.length === 0 && !showForm && (
-        <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
+        <p className="rounded-xl border border-dashed border-slate-600 p-8 text-center text-sm text-slate-400">
           {t('noRoutines')}
         </p>
       )}
@@ -210,7 +223,7 @@ export default function Routines() {
           const history = recentDueDates(r, 10)
           const canTick = admin || r.assignee_id === session?.user.id
           return (
-            <div key={r.id} className={`rounded-xl border bg-white p-3 shadow-sm ${r.active ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
+            <div key={r.id} className={`rounded-xl border bg-slate-900 p-3 shadow-sm ${r.active ? 'border-slate-700' : 'border-slate-800 opacity-60'}`}>
               <div className="flex items-center gap-3">
                 {person && <Avatar name={person.full_name} size={7} />}
                 <span className="min-w-0 flex-1">
@@ -228,21 +241,42 @@ export default function Routines() {
                       onChange={() => toggleToday(r)}
                       className="h-4 w-4 accent-emerald-600"
                     />
-                    <span className="text-slate-500">{t('doneToday')}</span>
+                    <span className="text-slate-400">{t('doneToday')}</span>
                   </label>
                 ) : (
-                  <span className="text-xs text-slate-300">{t('notDueToday')}</span>
+                  <span className="text-xs text-slate-600">{t('notDueToday')}</span>
+                )}
+                {!r.approved && !admin && (
+                  <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-[10px] font-medium whitespace-nowrap text-amber-300">
+                    {t('pendingApproval')}
+                  </span>
                 )}
                 {admin && (
                   <>
+                    {!r.approved ? (
+                      <button
+                        onClick={async () => {
+                          await supabase.from('routines').update({ approved: true }).eq('id', r.id)
+                          await notify({ userId: r.created_by, actorId: session!.user.id, type: 'routine_approved' })
+                          load()
+                        }}
+                        className="rounded-md bg-amber-900/60 px-2 py-0.5 text-xs font-semibold text-amber-300 hover:bg-amber-800"
+                      >
+                        ✓ {t('approve')}
+                      </button>
+                    ) : (
+                      <span title={t('approvedLock')} className="text-xs text-slate-600 select-none">🔒</span>
+                    )}
                     <button
                       onClick={() => toggleActive(r)}
-                      className={`rounded-md border px-2 py-0.5 text-xs ${r.active ? 'border-emerald-200 text-emerald-600' : 'border-slate-200 text-slate-400'}`}
+                      className={`rounded-md border px-2 py-0.5 text-xs ${r.active ? 'border-emerald-800 text-emerald-400' : 'border-slate-700 text-slate-400'}`}
                     >
                       {r.active ? t('active') : t('paused')}
                     </button>
-                    <button onClick={() => removeRoutine(r)} className="text-slate-300 hover:text-red-500">✕</button>
                   </>
+                )}
+                {(admin || (r.created_by === session?.user.id && !r.approved)) && (
+                  <button onClick={() => removeRoutine(r)} className="text-slate-600 hover:text-red-500">✕</button>
                 )}
               </div>
               {history.length > 0 && (
@@ -253,7 +287,7 @@ export default function Routines() {
                       key={d}
                       title={d}
                       className={`inline-block h-3.5 w-3.5 rounded-sm text-center text-[9px] leading-3.5 ${
-                        doneOn(r.id, d) ? 'bg-emerald-400 text-white' : d === todayKey ? 'bg-slate-200' : 'bg-red-200 text-red-700'
+                        doneOn(r.id, d) ? 'bg-emerald-400 text-white' : d === todayKey ? 'bg-slate-700' : 'bg-red-900 text-red-300'
                       }`}
                     >
                       {doneOn(r.id, d) ? '✓' : d === todayKey ? '' : '✗'}

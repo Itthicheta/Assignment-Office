@@ -42,6 +42,7 @@ export interface Task {
   position: number
   assignee_id: string | null
   due_date: string | null
+  due_time: string | null
   created_by: string
   created_at: string
   updated_at: string
@@ -95,6 +96,7 @@ export interface Routine {
   weekdays: number[]   // 0 = Sunday … 6 = Saturday
   monthdays: number[]  // 1 … 31
   active: boolean
+  approved: boolean
   created_by: string
   created_at: string
 }

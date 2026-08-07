@@ -66,13 +66,14 @@ export default function NotificationsBell() {
     setOpen(false)
     load()
     if (n.task) navigate(`/projects/${n.task.project_id}?task=${n.task.id}`)
+    else if (n.type.includes('routine')) navigate('/routines')
   }
 
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="relative rounded-full p-1.5 text-slate-500 hover:bg-slate-100"
+        className="relative rounded-full p-1.5 text-slate-400 hover:bg-slate-800"
         title={t('notifications')}
       >
         🔔
@@ -83,11 +84,11 @@ export default function NotificationsBell() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-80 rounded-xl border border-slate-200 bg-white shadow-lg">
-          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+        <div className="absolute right-0 z-30 mt-2 w-80 rounded-xl border border-slate-700 bg-slate-900 shadow-lg">
+          <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
             <span className="text-sm font-semibold">{t('notifications')}</span>
             {unread > 0 && (
-              <button onClick={markAllRead} className="text-xs text-indigo-600 hover:underline">
+              <button onClick={markAllRead} className="text-xs text-indigo-400 hover:underline">
                 {t('markAllRead')}
               </button>
             )}
@@ -100,12 +101,12 @@ export default function NotificationsBell() {
                 <button
                   key={n.id}
                   onClick={() => openItem(n)}
-                  className={`flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-slate-50 ${n.read ? 'opacity-60' : ''}`}
+                  className={`flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-slate-800 ${n.read ? 'opacity-60' : ''}`}
                 >
                   {actor && <Avatar name={actor.full_name} size={6} />}
                   <span className="text-xs leading-snug">
                     <b>{actor?.full_name ?? '—'}</b> {t(`notif_${n.type}` as TKey)}
-                    {n.task && <span className="block text-slate-500">“{n.task.title}”</span>}
+                    {n.task && <span className="block text-slate-400">“{n.task.title}”</span>}
                   </span>
                   {!n.read && <span className="mt-1 ml-auto h-2 w-2 shrink-0 rounded-full bg-indigo-500" />}
                 </button>

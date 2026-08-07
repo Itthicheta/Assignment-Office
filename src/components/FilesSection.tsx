@@ -9,7 +9,17 @@ const fmtSize = (b: number) =>
   b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`
 
 // File list + upload for a project (taskId null) or a single task.
-export default function FilesSection({ projectId, taskId }: { projectId: string; taskId: string | null }) {
+// canUpload is decided by the caller (task/subtask assignees or admin for
+// task files; admin only for project files) and enforced in the database.
+export default function FilesSection({
+  projectId,
+  taskId,
+  canUpload,
+}: {
+  projectId: string
+  taskId: string | null
+  canUpload: boolean
+}) {
   const { session, profile, profiles } = useAuth()
   const { t } = useI18n()
   const [files, setFiles] = useState<Attachment[]>([])
@@ -69,14 +79,16 @@ export default function FilesSection({ projectId, taskId }: { projectId: string;
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-slate-500">📎 {t('files')} ({files.length})</h3>
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={busy}
-          className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-        >
-          {busy ? t('uploading') : `+ ${t('uploadFile')}`}
-        </button>
+        <h3 className="text-xs font-semibold text-slate-400">📎 {t('files')} ({files.length})</h3>
+        {canUpload && (
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+          >
+            {busy ? t('uploading') : `+ ${t('uploadFile')}`}
+          </button>
+        )}
         <input
           ref={inputRef}
           type="file"
@@ -90,15 +102,15 @@ export default function FilesSection({ projectId, taskId }: { projectId: string;
       </div>
       <div className="space-y-1">
         {files.map((f) => (
-          <div key={f.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2 py-1.5 text-sm">
-            <button onClick={() => open(f)} className="min-w-0 flex-1 truncate text-left text-indigo-600 hover:underline">
+          <div key={f.id} className="flex items-center gap-2 rounded-lg border border-slate-800 px-2 py-1.5 text-sm">
+            <button onClick={() => open(f)} className="min-w-0 flex-1 truncate text-left text-indigo-400 hover:underline">
               {f.name}
             </button>
             <span className="text-xs whitespace-nowrap text-slate-400">
               {fmtSize(f.size)} · {nameOf(f.uploaded_by)}
             </span>
             {(f.uploaded_by === session?.user.id || isAdmin(profile)) && (
-              <button onClick={() => remove(f)} className="text-slate-300 hover:text-red-500">✕</button>
+              <button onClick={() => remove(f)} className="text-slate-600 hover:text-red-500">✕</button>
             )}
           </div>
         ))}

@@ -44,7 +44,7 @@ export default function CalendarPage() {
           .gte('due_date', toDateStr(monthStart))
           .lte('due_date', toDateStr(monthEnd)),
         supabase.from('projects').select('*'),
-        supabase.from('routines').select('*').eq('active', true),
+        supabase.from('routines').select('*').eq('active', true).eq('approved', true),
       ])
       setTasks((tsk.data as Task[]) ?? [])
       setProjects((prj.data as Project[]) ?? [])
@@ -121,9 +121,9 @@ export default function CalendarPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold">{t('calendar')}</h1>
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} className="rounded-md border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50">←</button>
+          <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} className="rounded-md border border-slate-700 px-2 py-1 text-sm hover:bg-slate-800">←</button>
           <span className="min-w-36 text-center text-sm font-semibold">{monthLabel}</span>
-          <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} className="rounded-md border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50">→</button>
+          <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} className="rounded-md border border-slate-700 px-2 py-1 text-sm hover:bg-slate-800">→</button>
         </div>
       </div>
 
@@ -138,7 +138,7 @@ export default function CalendarPage() {
         </label>
         <div className="ml-auto flex flex-wrap items-center gap-3">
           {usedProjects.map((p) => (
-            <span key={p.id} className="flex items-center gap-1 text-xs text-slate-500">
+            <span key={p.id} className="flex items-center gap-1 text-xs text-slate-400">
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} />
               {p.name}
             </span>
@@ -146,8 +146,8 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid grid-cols-7 border-b border-slate-100 text-center text-xs font-semibold text-slate-400">
+      <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-sm">
+        <div className="grid grid-cols-7 border-b border-slate-800 text-center text-xs font-semibold text-slate-400">
           {[0, 1, 2, 3, 4, 5, 6].map((d) => (
             <div key={d} className="py-2">
               {new Date(2023, 0, 1 + d).toLocaleDateString(locale, { weekday: 'short' })}
@@ -155,7 +155,7 @@ export default function CalendarPage() {
           ))}
         </div>
         {weeks.map((week, wi) => (
-          <div key={wi} className="grid grid-cols-7 border-b border-slate-50 last:border-b-0">
+          <div key={wi} className="grid grid-cols-7 border-b border-slate-800 last:border-b-0">
             {week.map((day, di) => {
               const key = day ? toDateStr(day) : `${wi}-${di}`
               const items = day ? (itemsByDay[toDateStr(day)] ?? []) : []
@@ -165,13 +165,13 @@ export default function CalendarPage() {
                 <div
                   key={key}
                   onClick={() => day && setSelectedDay(toDateStr(day))}
-                  className={`min-h-16 cursor-pointer border-r border-slate-50 p-1 align-top last:border-r-0 sm:min-h-24 ${
-                    isSelected ? 'bg-indigo-50/60' : ''
+                  className={`min-h-16 cursor-pointer border-r border-slate-800 p-1 align-top last:border-r-0 sm:min-h-24 ${
+                    isSelected ? 'bg-indigo-950/40' : ''
                   }`}
                 >
                   {day && (
                     <>
-                      <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${isToday ? 'bg-indigo-600 font-bold text-white' : 'text-slate-500'}`}>
+                      <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${isToday ? 'bg-indigo-600 font-bold text-white' : 'text-slate-400'}`}>
                         {day.getDate()}
                       </span>
                       {/* dots on mobile */}
@@ -193,8 +193,8 @@ export default function CalendarPage() {
                               e.stopPropagation()
                               openItem(item)
                             }}
-                            className={`block w-full truncate rounded px-1 text-left text-[10px] leading-4 hover:bg-slate-100 ${
-                              item.kind === 'routine' ? 'text-slate-500 italic' : ''
+                            className={`block w-full truncate rounded px-1 text-left text-[10px] leading-4 hover:bg-slate-800 ${
+                              item.kind === 'routine' ? 'text-slate-400 italic' : ''
                             } ${item.done ? 'line-through opacity-50' : ''}`}
                           >
                             {item.kind === 'routine' ? '🔁 ' : (
@@ -217,17 +217,17 @@ export default function CalendarPage() {
       </div>
 
       {/* selected-day detail (essential on mobile) */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-        <h2 className="mb-2 text-sm font-semibold text-slate-600">
+      <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-sm">
+        <h2 className="mb-2 text-sm font-semibold text-slate-300">
           {new Date(selectedDay + 'T00:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}
-          {selectedDay === todayKey && <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700">{t('today')}</span>}
+          {selectedDay === todayKey && <span className="ml-2 rounded-full bg-indigo-900 px-2 py-0.5 text-xs text-indigo-300">{t('today')}</span>}
         </h2>
         <div className="space-y-1">
           {(itemsByDay[selectedDay] ?? []).map((item, i) => (
             <button
               key={i}
               onClick={() => openItem(item)}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-50"
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-800"
             >
               {item.kind === 'routine' ? (
                 <span>🔁</span>
@@ -239,7 +239,7 @@ export default function CalendarPage() {
             </button>
           ))}
           {(itemsByDay[selectedDay] ?? []).length === 0 && (
-            <p className="px-2 py-1 text-sm text-slate-300">—</p>
+            <p className="px-2 py-1 text-sm text-slate-600">—</p>
           )}
         </div>
       </div>

@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { PriorityBadge } from '../components/Badges'
+import { fmtDue, isDueToday, isOverdue, todayStr } from '../lib/due'
 import Avatar from '../components/Avatar'
 import type { Task } from '../lib/types'
 
@@ -15,13 +16,12 @@ interface TaskWithProject extends Task {
   parent: { title: string } | null
 }
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
 const FILTER_KEY = 'mytasks_project_filter'
 
 function SortableRow({ task, myPos }: { task: TaskWithProject; myPos: number }) {
   const navigate = useNavigate()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
-  const overdue = task.due_date && task.due_date < todayStr()
+  const overdue = isOverdue(task)
   const waitingCheck = task.tick_done && !task.tick_checked
 
   return (
@@ -29,16 +29,16 @@ function SortableRow({ task, myPos }: { task: TaskWithProject; myPos: number }) 
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={() => navigate(`/projects/${task.project_id}?task=${task.id}`)}
-      className={`flex cursor-pointer items-center gap-2 rounded-xl border bg-white px-3 py-3 shadow-sm hover:border-indigo-300 ${
+      className={`flex cursor-pointer items-center gap-2 rounded-xl border bg-slate-900 px-3 py-3 shadow-sm hover:border-indigo-700 ${
         isDragging ? 'z-10 opacity-70' : ''
-      } ${waitingCheck ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}
+      } ${waitingCheck ? 'border-amber-300 bg-amber-950/40' : 'border-slate-700'}`}
       data-pos={myPos}
     >
       <span
         {...attributes}
         {...listeners}
         onClick={(e) => e.stopPropagation()}
-        className="cursor-grab touch-none px-1 text-slate-300 select-none active:cursor-grabbing"
+        className="cursor-grab touch-none px-1 text-slate-600 select-none active:cursor-grabbing"
       >
         ⠿
       </span>
@@ -56,8 +56,8 @@ function SortableRow({ task, myPos }: { task: TaskWithProject; myPos: number }) 
       </span>
       <PriorityBadge priority={task.priority} />
       {task.due_date && (
-        <span className={`text-xs whitespace-nowrap ${overdue ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
-          {task.due_date}
+        <span className={`text-xs whitespace-nowrap ${overdue ? 'font-semibold text-red-400' : 'text-slate-400'}`}>
+          {fmtDue(task)}
         </span>
       )}
     </div>
@@ -69,6 +69,7 @@ export default function MyTasks() {
   const { t } = useI18n()
   const [mine, setMine] = useState<TaskWithProject[]>([])
   const [reviews, setReviews] = useState<TaskWithProject[]>([])
+  const [chase, setChase] = useState<TaskWithProject[]>([])
   const [order, setOrder] = useState<Record<string, number>>({})
   const [filter, setFilter] = useState<string[]>(() => {
     try {
@@ -129,15 +130,6 @@ export default function MyTasks() {
         .eq('tick_done', true)
         .eq('tick_checked', false)
       reviewRows = ((data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null as { title: string } | null }))
-      const revParentIds = [...new Set(reviewRows.map((x) => x.parent_id).filter(Boolean))] as string[]
-      if (revParentIds.length) {
-        const { data: parents } = await supabase.from('tasks').select('id, title').in('id', revParentIds)
-        const titleOf: Record<string, string> = {}
-        for (const row of parents ?? []) titleOf[row.id] = row.title
-        for (const row of reviewRows) {
-          if (row.parent_id && titleOf[row.parent_id]) row.parent = { title: titleOf[row.parent_id] }
-        }
-      }
     } else {
       const myTop = mineRows.filter((x) => !x.parent_id)
       if (myTop.length) {
@@ -155,7 +147,34 @@ export default function MyTasks() {
         }))
       }
     }
+    // Admin chase list: every in-progress task/subtask due today or past due
+    let chaseRows: TaskWithProject[] = []
+    if (profile?.role === 'admin') {
+      const { data } = await supabase
+        .from('tasks')
+        .select('*, project:projects(id, name, color, created_at)')
+        .eq('status', 'in_progress')
+        .not('due_date', 'is', null)
+        .lte('due_date', todayStr())
+      chaseRows = ((data as TaskWithProject[]) ?? [])
+        .filter((x) => isOverdue(x) || isDueToday(x))
+        .map((x) => ({ ...x, parent: null as { title: string } | null }))
+    }
+
+    // Attach parent titles to subtasks in the review/chase lists
+    const needParents = [...reviewRows, ...chaseRows].filter((x) => x.parent_id && !x.parent)
+    const missingIds = [...new Set(needParents.map((x) => x.parent_id))] as string[]
+    if (missingIds.length) {
+      const { data: parents } = await supabase.from('tasks').select('id, title').in('id', missingIds)
+      const titleOf: Record<string, string> = {}
+      for (const row of parents ?? []) titleOf[row.id] = row.title
+      for (const row of needParents) {
+        if (row.parent_id && titleOf[row.parent_id]) row.parent = { title: titleOf[row.parent_id] }
+      }
+    }
+
     setReviews(reviewRows)
+    setChase(chaseRows)
     const ord: Record<string, number> = {}
     for (const row of o.data ?? []) ord[row.task_id] = row.position
     setOrder(ord)
@@ -182,9 +201,9 @@ export default function MyTasks() {
 
   const myProjects = useMemo(() => {
     const map = new Map<string, { id: string; name: string; color: string; created_at: string }>()
-    for (const task of [...mine, ...reviews]) if (task.project) map.set(task.project.id, task.project)
+    for (const task of [...mine, ...reviews, ...chase]) if (task.project) map.set(task.project.id, task.project)
     return [...map.values()].sort((x, y) => x.created_at.localeCompare(y.created_at))
-  }, [mine, reviews])
+  }, [mine, reviews, chase])
 
   const activeFilter = filter.length ? filter : myProjects.map((p) => p.id)
 
@@ -230,14 +249,14 @@ export default function MyTasks() {
           <div className="relative" ref={filterRef}>
             <button
               onClick={() => setFilterOpen(!filterOpen)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-800"
             >
               {filter.length === 0 ? t('allProjects') : `${activeFilter.length}/${myProjects.length}`} ▾
             </button>
             {filterOpen && (
-              <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+              <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
                 {myProjects.map((p) => (
-                  <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                  <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
                     <input
                       type="checkbox"
                       checked={activeFilter.includes(p.id)}
@@ -254,6 +273,47 @@ export default function MyTasks() {
         )}
       </div>
 
+      {(() => {
+        const isAdm = profile?.role === 'admin'
+        const items = (isAdm ? chase : mine.filter((x) => isOverdue(x)))
+          .filter((x) => activeFilter.includes(x.project_id))
+          .sort((a, b) =>
+            `${a.due_date}${a.due_time ?? ''}`.localeCompare(`${b.due_date}${b.due_time ?? ''}`),
+          )
+        if (!items.length) return null
+        return (
+          <section>
+            <h2 className="mb-2 text-sm font-semibold text-red-500">
+              ⏰ {isAdm ? t('chaseSection') : t('overdueSection')}{' '}
+              <span className="text-xs font-normal">({items.length})</span>
+            </h2>
+            <div className="space-y-2">
+              {items.map((task) => {
+                const assignee = profiles.find((p) => p.id === task.assignee_id)
+                return (
+                  <Link
+                    key={task.id}
+                    to={`/projects/${task.project_id}?task=${task.id}`}
+                    className="flex items-center gap-3 rounded-xl border border-red-900 bg-red-950/40 px-4 py-3 hover:border-red-600"
+                  >
+                    {isAdm && assignee && <Avatar name={assignee.full_name} size={7} />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {task.parent ? `${task.parent.title} – ${task.title}` : task.title}
+                      </span>
+                      <span className="block truncate text-xs text-slate-400">{task.project?.name}</span>
+                    </span>
+                    <span className={`text-xs whitespace-nowrap ${isOverdue(task) ? 'font-semibold text-red-400' : 'text-amber-400'}`}>
+                      {fmtDue(task)}
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
+          </section>
+        )
+      })()}
+
       {reviews.length > 0 && (() => {
         const shown = reviews
           .filter((task) => activeFilter.includes(task.project_id))
@@ -261,13 +321,13 @@ export default function MyTasks() {
         return (
           <section>
             <div className="mb-2 flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-amber-600">
+              <h2 className="text-sm font-semibold text-amber-400">
                 {t('waitingMyCheck')} <span className="text-xs">({shown.length})</span>
               </h2>
               <div className="relative ml-auto" ref={typeFilterRef}>
                 <button
                   onClick={() => setTypeFilterOpen(!typeFilterOpen)}
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800"
                 >
                   {typeFilter.main && typeFilter.subs
                     ? `${t('mainTasks')} + ${t('subtasks')}`
@@ -276,8 +336,8 @@ export default function MyTasks() {
                       : t('subtasks')} ▾
                 </button>
                 {typeFilterOpen && (
-                  <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-                    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                  <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
                       <input
                         type="checkbox"
                         checked={typeFilter.main}
@@ -286,7 +346,7 @@ export default function MyTasks() {
                       />
                       {t('mainTasks')}
                     </label>
-                    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
                       <input
                         type="checkbox"
                         checked={typeFilter.subs}
@@ -306,7 +366,7 @@ export default function MyTasks() {
                   <Link
                     key={task.id}
                     to={`/projects/${task.project_id}?task=${task.id}`}
-                    className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 hover:border-amber-400"
+                    className="flex items-center gap-3 rounded-xl border border-amber-900 bg-amber-950/40 px-4 py-3 hover:border-amber-600"
                   >
                     {assignee && <Avatar name={assignee.full_name} size={7} />}
                     <span className="min-w-0 flex-1">
@@ -324,7 +384,7 @@ export default function MyTasks() {
       })()}
 
       {mine.length === 0 && reviews.length === 0 && (
-        <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
+        <p className="rounded-xl border border-dashed border-slate-600 p-8 text-center text-sm text-slate-400">
           {t('allCaughtUp')}
         </p>
       )}
@@ -338,7 +398,7 @@ export default function MyTasks() {
           if (groupTasks.length === 0) return null
           return (
             <section key={proj.id}>
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: proj.color }} />
                 {proj.name} <span className="text-xs font-normal text-slate-400">({groupTasks.length})</span>
               </h2>

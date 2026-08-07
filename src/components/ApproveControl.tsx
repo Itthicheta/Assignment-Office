@@ -17,7 +17,7 @@ export default function ApproveControl({ task, onChanged }: { task: Task; onChan
   // nothing to tick or untick.
   if (profiles.find((p) => p.id === task.created_by)?.role === 'admin') {
     return (
-      <span title={t('approvedLock')} className="text-xs text-slate-300 select-none">✓🔒</span>
+      <span title={t('approvedLock')} className="text-xs text-slate-600 select-none">✓🔒</span>
     )
   }
 
@@ -45,7 +45,7 @@ export default function ApproveControl({ task, onChanged }: { task: Task; onChan
 
   if (!task.approved) {
     return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium whitespace-nowrap text-amber-700">
+      <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-[10px] font-medium whitespace-nowrap text-amber-300">
         {t('pendingApproval')}
       </span>
     )

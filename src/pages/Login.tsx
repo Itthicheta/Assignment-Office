@@ -22,20 +22,20 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 to-slate-100 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 to-indigo-950/50 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-indigo-600">📋 {t('appName')}</h1>
-          <p className="mt-1 text-sm text-slate-500">{t('authTagline')}</p>
+          <h1 className="text-2xl font-bold text-indigo-400">📋 {t('appName')}</h1>
+          <p className="mt-1 text-sm text-slate-400">{t('authTagline')}</p>
         </div>
-        <form onSubmit={submit} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <form onSubmit={submit} className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
           <input
             required
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
             placeholder={t('usernameOrEmail')}
             autoComplete="username"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-600 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
           <input
             required
@@ -44,9 +44,9 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder={t('password')}
             autoComplete="current-password"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-600 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
           <button
             disabled={busy}
             className="w-full rounded-lg bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
@@ -58,7 +58,7 @@ export default function Login() {
         <div className="mt-4 text-center">
           <button
             onClick={() => setLang(lang === 'th' ? 'en' : 'th')}
-            className="text-xs font-semibold text-slate-400 hover:text-slate-600"
+            className="text-xs font-semibold text-slate-400 hover:text-slate-300"
           >
             {lang === 'th' ? 'English' : 'ภาษาไทย'}
           </button>

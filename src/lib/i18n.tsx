@@ -60,6 +60,15 @@ const dict = {
   allCaughtUp: { en: 'All caught up — no open tasks assigned to you.', th: 'เยี่ยม! ไม่มีงานค้างที่มอบหมายให้คุณ' },
   allProjects: { en: 'All projects', th: 'ทุกโปรเจกต์' },
   mainTasks: { en: 'Tasks', th: 'งานหลัก' },
+  overdueSection: { en: 'Past deadline', th: 'เลยกำหนด' },
+  chaseSection: { en: 'Due today / past deadline', th: 'ถึงกำหนดวันนี้ / เลยกำหนด' },
+  dueTime: { en: 'Time (optional)', th: 'เวลา (ไม่บังคับ)' },
+  confirmDeleteProject1: { en: 'Delete this project and ALL tasks inside it?', th: 'ลบโปรเจกต์นี้และงานทั้งหมดข้างใน?' },
+  confirmDeleteProject2: {
+    en: 'Are you SURE? Everything in this project will be permanently deleted.',
+    th: 'แน่ใจหรือไม่? ทุกอย่างในโปรเจกต์นี้จะถูกลบถาวร',
+  },
+  deleteProject: { en: 'Delete project', th: 'ลบโปรเจกต์' },
 
   // Projects
   newProject: { en: 'New project', th: 'สร้างโปรเจกต์' },
@@ -121,6 +130,8 @@ const dict = {
   notif_done: { en: 'checked and approved your task', th: 'ตรวจงานของคุณผ่านแล้ว' },
   notif_new_task: { en: 'created a new task — waiting for your approval', th: 'สร้างงานใหม่ รอคุณอนุมัติ' },
   notif_task_approved: { en: 'approved your task', th: 'อนุมัติงานของคุณแล้ว' },
+  notif_new_routine: { en: 'created a new routine — waiting for your approval', th: 'สร้างงานประจำใหม่ รอคุณอนุมัติ' },
+  notif_routine_approved: { en: 'approved your routine', th: 'อนุมัติงานประจำของคุณแล้ว' },
   markAllRead: { en: 'Mark all as read', th: 'อ่านทั้งหมดแล้ว' },
   noNotifications: { en: 'No notifications', th: 'ไม่มีการแจ้งเตือน' },
 

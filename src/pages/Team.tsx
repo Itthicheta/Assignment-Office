@@ -21,7 +21,7 @@ export default function Team() {
   const [ePasswordConfirm, setEPasswordConfirm] = useState('')
 
   if (profile?.role !== 'admin') {
-    return <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">{t('adminOnly')}</p>
+    return <p className="rounded-xl border border-dashed border-slate-600 p-8 text-center text-sm text-slate-400">{t('adminOnly')}</p>
   }
 
   const createMember = async (e: FormEvent) => {
@@ -118,14 +118,14 @@ export default function Team() {
   }
 
   const inputCls =
-    'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none'
+    'w-full rounded-lg border border-slate-600 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none'
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold">{t('team')}</h1>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slate-600">+ {t('newMember')}</h2>
+      <section className="rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-semibold text-slate-300">+ {t('newMember')}</h2>
         <form onSubmit={createMember} className="grid gap-2 sm:grid-cols-2">
           <input required value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t('fullName')} className={inputCls} />
           <input
@@ -139,8 +139,8 @@ export default function Team() {
           />
           <input required type="password" minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} autoComplete="new-password" className={inputCls} />
           <input required type="password" minLength={6} value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={t('confirmPassword')} autoComplete="new-password" className={inputCls} />
-          {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
-          {success && <p className="text-sm text-emerald-600 sm:col-span-2">{success}</p>}
+          {error && <p className="text-sm text-red-400 sm:col-span-2">{error}</p>}
+          {success && <p className="text-sm text-emerald-400 sm:col-span-2">{success}</p>}
           <button
             disabled={busy}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 sm:col-span-2 sm:justify-self-start"
@@ -152,7 +152,7 @@ export default function Team() {
 
       <section className="space-y-2">
         {profiles.map((p) => (
-          <div key={p.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div key={p.id} className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 shadow-sm">
             <div className="flex items-center gap-3">
               <Avatar name={p.full_name} size={9} />
               <span className="min-w-0 flex-1">
@@ -160,14 +160,14 @@ export default function Team() {
                 <span className="block truncate text-xs text-slate-400">@{p.username ?? '—'}</span>
               </span>
               {p.id === profile.id ? (
-                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                <span className="rounded-full bg-indigo-950/60 px-2 py-0.5 text-xs font-medium text-indigo-300">
                   {p.role === 'admin' ? t('adminRole') : t('memberRole')}
                 </span>
               ) : (
                 <select
                   value={p.role}
                   onChange={(e) => changeRole(p.id, e.target.value as 'admin' | 'member')}
-                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none"
+                  className="rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none"
                 >
                   <option value="member">{t('memberRole')}</option>
                   <option value="admin">{t('adminRole')}</option>
@@ -175,7 +175,7 @@ export default function Team() {
               )}
               <button
                 onClick={() => (editingId === p.id ? setEditingId(null) : startEdit(p.id, p.username, p.full_name))}
-                className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
+                className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
               >
                 ✏️ {t('edit')}
               </button>
@@ -184,7 +184,7 @@ export default function Team() {
                   onClick={() => deleteAccount(p.id)}
                   disabled={busy}
                   title={t('confirmDeleteAccount1')}
-                  className="rounded-md border border-red-100 px-2 py-1 text-xs text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                  className="rounded-md border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950 hover:text-red-400 disabled:opacity-50"
                 >
                   🗑
                 </button>
@@ -197,7 +197,7 @@ export default function Team() {
                   e.preventDefault()
                   saveEdit(p.id)
                 }}
-                className="mt-3 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2"
+                className="mt-3 grid gap-2 border-t border-slate-800 pt-3 sm:grid-cols-2"
               >
                 <input
                   value={eFullName}
@@ -229,7 +229,7 @@ export default function Team() {
                   disabled={!ePassword}
                   className={inputCls}
                 />
-                {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
+                {error && <p className="text-sm text-red-400 sm:col-span-2">{error}</p>}
                 <div className="flex gap-2 sm:col-span-2">
                   <button
                     disabled={busy}
@@ -240,7 +240,7 @@ export default function Team() {
                   <button
                     type="button"
                     onClick={() => setEditingId(null)}
-                    className="rounded-lg px-4 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
+                    className="rounded-lg px-4 py-1.5 text-sm text-slate-400 hover:bg-slate-800"
                   >
                     {t('cancel')}
                   </button>
