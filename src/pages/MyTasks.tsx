@@ -8,8 +8,10 @@ import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { PriorityBadge } from '../components/Badges'
 import { fmtDue, isDueToday, isOverdue, todayStr } from '../lib/due'
+import { setApproved } from '../lib/taskActions'
+import { notify } from '../lib/notify'
 import Avatar from '../components/Avatar'
-import type { Task } from '../lib/types'
+import type { Routine, Task } from '../lib/types'
 
 interface TaskWithProject extends Task {
   project: { id: string; name: string; color: string; created_at: string } | null
@@ -138,6 +140,8 @@ export default function MyTasks() {
   const [mine, setMine] = useState<TaskWithProject[]>([])
   const [reviews, setReviews] = useState<TaskWithProject[]>([])
   const [chase, setChase] = useState<TaskWithProject[]>([])
+  const [pendingTasks, setPendingTasks] = useState<TaskWithProject[]>([])
+  const [pendingRoutines, setPendingRoutines] = useState<Routine[]>([])
   const [order, setOrder] = useState<Record<string, number>>({})
   const [filter, setFilter] = useState<string[]>(() => {
     try {
@@ -208,6 +212,20 @@ export default function MyTasks() {
         }))
       }
     }
+    // Admin approval inbox: member-created tasks and routines not yet approved
+    if (profile?.role === 'admin') {
+      const [pt, pr] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('*, project:projects(id, name, color, created_at)')
+          .eq('approved', false)
+          .is('parent_id', null),
+        supabase.from('routines').select('*').eq('approved', false),
+      ])
+      setPendingTasks((((pt.data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null }))))
+      setPendingRoutines((pr.data as Routine[]) ?? [])
+    }
+
     // Admin chase list: every in-progress task/subtask due today or past due
     let chaseRows: TaskWithProject[] = []
     if (profile?.role === 'admin') {
@@ -327,6 +345,77 @@ export default function MyTasks() {
           </div>
         )}
       </div>
+
+      {profile?.role === 'admin' && (pendingTasks.length > 0 || pendingRoutines.length > 0) && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold text-indigo-400">
+            🔏 {t('waitingMyApproval')}{' '}
+            <span className="text-xs font-normal">({pendingTasks.length + pendingRoutines.length})</span>
+          </h2>
+          <div className="space-y-2">
+            {pendingTasks.map((task) => {
+              const creator = profiles.find((p) => p.id === task.created_by)
+              return (
+                <div
+                  key={task.id}
+                  className="flex items-center gap-3 rounded-xl border border-indigo-800 bg-indigo-950/30 px-4 py-3"
+                >
+                  {creator && (
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Avatar name={creator.full_name} size={7} />
+                      <span className="hidden max-w-24 truncate text-xs text-slate-400 sm:inline">{creator.full_name}</span>
+                    </span>
+                  )}
+                  <Link to={`/projects/${task.project_id}?task=${task.id}`} className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium hover:text-indigo-300">{task.title}</span>
+                    <span className="block truncate text-xs text-slate-400">{task.project?.name}</span>
+                  </Link>
+                  <button
+                    onClick={async () => {
+                      const err = await setApproved(task, true, session!.user.id)
+                      if (err) alert(err)
+                      load()
+                    }}
+                    className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
+                  >
+                    ✓ {t('approve')}
+                  </button>
+                </div>
+              )
+            })}
+            {pendingRoutines.map((r) => {
+              const creator = profiles.find((p) => p.id === r.created_by)
+              return (
+                <div
+                  key={r.id}
+                  className="flex items-center gap-3 rounded-xl border border-indigo-800 bg-indigo-950/30 px-4 py-3"
+                >
+                  {creator && (
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Avatar name={creator.full_name} size={7} />
+                      <span className="hidden max-w-24 truncate text-xs text-slate-400 sm:inline">{creator.full_name}</span>
+                    </span>
+                  )}
+                  <Link to="/routines" className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium hover:text-indigo-300">🔁 {r.title}</span>
+                    <span className="block truncate text-xs text-slate-400">{t('routines')}</span>
+                  </Link>
+                  <button
+                    onClick={async () => {
+                      await supabase.from('routines').update({ approved: true }).eq('id', r.id)
+                      await notify({ userId: r.created_by, actorId: session!.user.id, type: 'routine_approved' })
+                      load()
+                    }}
+                    className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
+                  >
+                    ✓ {t('approve')}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {(() => {
         const isAdm = profile?.role === 'admin'

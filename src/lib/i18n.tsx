@@ -47,6 +47,7 @@ const dict = {
   tickWork: { en: 'Done', th: 'เสร็จ' },
   tickCheck: { en: 'Checked', th: 'ตรวจแล้ว' },
   waitingMyCheck: { en: 'Waiting for my check', th: 'รอฉันตรวจ' },
+  waitingMyApproval: { en: 'Waiting for my approval', th: 'รอฉันอนุมัติ' },
   pendingApproval: { en: 'Pending approval', th: 'รออนุมัติ' },
   approve: { en: 'Approve', th: 'อนุมัติ' },
   approvedLock: { en: 'Approved (locked)', th: 'อนุมัติแล้ว (ล็อก)' },
