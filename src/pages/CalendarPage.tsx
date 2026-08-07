@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
+import { isAdmin } from '../lib/can'
 import { dueDatesInRange, toDateStr } from '../lib/routineDates'
+import Avatar from '../components/Avatar'
 import type { Project, Routine, Task } from '../lib/types'
+
+interface TaskWithParent extends Task {
+  parentTitle?: string
+}
 
 interface DayItem {
   kind: 'task' | 'routine'
@@ -17,43 +23,77 @@ interface DayItem {
 }
 
 export default function CalendarPage() {
-  const { profiles } = useAuth()
+  const { session, profile, profiles } = useAuth()
   const { t, lang } = useI18n()
   const navigate = useNavigate()
   const [month, setMonth] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
-  const [tasks, setTasks] = useState<Task[]>([])
+  const [tasks, setTasks] = useState<TaskWithParent[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [routines, setRoutines] = useState<Routine[]>([])
   const [showTasks, setShowTasks] = useState(true)
   const [showRoutines, setShowRoutines] = useState(true)
   const [selectedDay, setSelectedDay] = useState<string>(toDateStr(new Date()))
+  const [personFilter, setPersonFilter] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('calendar_person_filter') ?? '[]')
+    } catch {
+      return []
+    }
+  })
+  const [personFilterOpen, setPersonFilterOpen] = useState(false)
+  const personFilterRef = useRef<HTMLDivElement>(null)
 
+  const admin = isAdmin(profile)
   const monthStart = month
   const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0)
 
   useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (personFilterRef.current && !personFilterRef.current.contains(e.target as Node)) setPersonFilterOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  useEffect(() => {
     const load = async () => {
+      // members see only their own items; admin sees everything
+      let taskQuery = supabase
+        .from('tasks')
+        .select('*')
+        .gte('due_date', toDateStr(monthStart))
+        .lte('due_date', toDateStr(monthEnd))
+      if (!admin && session) taskQuery = taskQuery.eq('assignee_id', session.user.id)
       const [tsk, prj, rtn] = await Promise.all([
-        supabase
-          .from('tasks')
-          .select('*')
-          .is('parent_id', null)
-          .gte('due_date', toDateStr(monthStart))
-          .lte('due_date', toDateStr(monthEnd)),
+        taskQuery,
         supabase.from('projects').select('*'),
         supabase.from('routines').select('*').eq('active', true).eq('approved', true),
       ])
-      setTasks((tsk.data as Task[]) ?? [])
+      const taskRows = ((tsk.data as TaskWithParent[]) ?? [])
+      const parentIds = [...new Set(taskRows.map((x) => x.parent_id).filter(Boolean))] as string[]
+      if (parentIds.length) {
+        const { data: parents } = await supabase.from('tasks').select('id, title').in('id', parentIds)
+        const titleOf: Record<string, string> = {}
+        for (const row of parents ?? []) titleOf[row.id] = row.title
+        for (const row of taskRows) {
+          if (row.parent_id) row.parentTitle = titleOf[row.parent_id]
+        }
+      }
+      setTasks(taskRows)
       setProjects((prj.data as Project[]) ?? [])
       setRoutines((rtn.data as Routine[]) ?? [])
     }
     load()
-  }, [month.getTime()])
+  }, [month.getTime(), admin, session?.user.id])
 
   const nameOf = (uid: string | null) => profiles.find((p) => p.id === uid)?.full_name ?? ''
+
+  // admin's person filter: empty = everyone; a subset hides other people
+  // (and unassigned tasks, which belong to nobody in the subset)
+  const personActive = personFilter.length ? personFilter : null
 
   const itemsByDay = useMemo(() => {
     const map: Record<string, DayItem[]> = {}
@@ -64,11 +104,12 @@ export default function CalendarPage() {
     if (showTasks) {
       for (const task of tasks) {
         if (!task.due_date) continue
+        if (admin && personActive && (!task.assignee_id || !personActive.includes(task.assignee_id))) continue
         const project = projects.find((p) => p.id === task.project_id)
         push(task.due_date, {
           kind: 'task',
           id: task.id,
-          label: task.title,
+          label: task.parentTitle ? `${task.parentTitle} – ${task.title}` : task.title,
           person: nameOf(task.assignee_id),
           color: project?.color ?? '#94a3b8',
           projectId: task.project_id,
@@ -78,6 +119,7 @@ export default function CalendarPage() {
     }
     if (showRoutines) {
       for (const routine of routines) {
+        if (admin && personActive && !personActive.includes(routine.assignee_id)) continue
         for (const day of dueDatesInRange(routine, monthStart, monthEnd)) {
           push(day, {
             kind: 'routine',
@@ -91,7 +133,7 @@ export default function CalendarPage() {
       }
     }
     return map
-  }, [tasks, routines, projects, profiles, showTasks, showRoutines, monthStart.getTime()])
+  }, [tasks, routines, projects, profiles, showTasks, showRoutines, monthStart.getTime(), admin, personFilter])
 
   // Build the calendar grid (weeks start on Sunday)
   const weeks = useMemo(() => {
@@ -136,6 +178,41 @@ export default function CalendarPage() {
           <input type="checkbox" checked={showRoutines} onChange={() => setShowRoutines(!showRoutines)} className="h-4 w-4 accent-slate-500" />
           🔁 {t('showRoutines')}
         </label>
+        {admin && (
+          <div className="relative" ref={personFilterRef}>
+            <button
+              onClick={() => setPersonFilterOpen(!personFilterOpen)}
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800"
+            >
+              {personFilter.length === 0 ? t('team') : `${personFilter.length}/${profiles.length}`} ▾
+            </button>
+            {personFilterOpen && (
+              <div className="absolute left-0 z-20 mt-1 w-52 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
+                {profiles.map((p) => {
+                  const active = personFilter.length ? personFilter : profiles.map((x) => x.id)
+                  return (
+                    <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={active.includes(p.id)}
+                        onChange={() => {
+                          const base = personFilter.length ? personFilter : profiles.map((x) => x.id)
+                          const next = base.includes(p.id) ? base.filter((x) => x !== p.id) : [...base, p.id]
+                          const val = next.length === profiles.length ? [] : next
+                          setPersonFilter(val)
+                          localStorage.setItem('calendar_person_filter', JSON.stringify(val))
+                        }}
+                        className="h-4 w-4 accent-indigo-600"
+                      />
+                      <Avatar name={p.full_name} size={6} />
+                      <span className="truncate">{p.full_name}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-3">
           {usedProjects.map((p) => (
             <span key={p.id} className="flex items-center gap-1 text-xs text-slate-400">
