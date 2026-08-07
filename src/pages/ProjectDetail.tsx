@@ -237,14 +237,14 @@ export default function ProjectDetail() {
   const addTask = async (e: FormEvent) => {
     e.preventDefault()
     if (!session || !id || !newTitle.trim()) return
-    // member-created tasks auto-assign to their creator
+    // new tasks auto-assign to their creator
     const { data, error } = await supabase
       .from('tasks')
       .insert({
         project_id: id,
         title: newTitle.trim(),
         created_by: session.user.id,
-        assignee_id: isAdmin(profile) ? null : session.user.id,
+        assignee_id: session.user.id,
       })
       .select()
       .single()

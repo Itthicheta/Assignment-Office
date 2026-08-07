@@ -18,6 +18,74 @@ interface TaskWithProject extends Task {
 
 const FILTER_KEY = 'mytasks_project_filter'
 
+interface TypeFilterValue {
+  main: boolean
+  subs: boolean
+}
+
+function loadTypeFilter(key: string): TypeFilterValue {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? '') || { main: true, subs: true }
+  } catch {
+    return { main: true, subs: true }
+  }
+}
+
+// Small Tasks/Subtasks dropdown used by the check and overdue sections
+function TypeFilter({
+  value,
+  onChange,
+  labels,
+}: {
+  value: TypeFilterValue
+  onChange: (v: TypeFilterValue) => void
+  labels: { main: string; subs: string }
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800"
+      >
+        {value.main && value.subs ? `${labels.main} + ${labels.subs}` : value.main ? labels.main : labels.subs} ▾
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
+            <input
+              type="checkbox"
+              checked={value.main}
+              onChange={() => onChange({ ...value, main: !value.main })}
+              className="h-4 w-4 accent-indigo-600"
+            />
+            {labels.main}
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
+            <input
+              type="checkbox"
+              checked={value.subs}
+              onChange={() => onChange({ ...value, subs: !value.subs })}
+              className="h-4 w-4 accent-indigo-600"
+            />
+            {labels.subs}
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SortableRow({ task, myPos }: { task: TaskWithProject; myPos: number }) {
   const navigate = useNavigate()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
@@ -79,17 +147,10 @@ export default function MyTasks() {
     }
   })
   const [filterOpen, setFilterOpen] = useState(false)
-  const [typeFilter, setTypeFilter] = useState<{ main: boolean; subs: boolean }>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('reviews_type_filter') ?? '') || { main: true, subs: true }
-    } catch {
-      return { main: true, subs: true }
-    }
-  })
-  const [typeFilterOpen, setTypeFilterOpen] = useState(false)
+  const [typeFilter, setTypeFilter] = useState<TypeFilterValue>(() => loadTypeFilter('reviews_type_filter'))
+  const [overdueFilter, setOverdueFilter] = useState<TypeFilterValue>(() => loadTypeFilter('overdue_type_filter'))
   const [loaded, setLoaded] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
-  const typeFilterRef = useRef<HTMLDivElement>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -188,16 +249,10 @@ export default function MyTasks() {
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false)
-      if (typeFilterRef.current && !typeFilterRef.current.contains(e.target as Node)) setTypeFilterOpen(false)
     }
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
-
-  const setTypeFilterPersist = (v: { main: boolean; subs: boolean }) => {
-    setTypeFilter(v)
-    localStorage.setItem('reviews_type_filter', JSON.stringify(v))
-  }
 
   const myProjects = useMemo(() => {
     const map = new Map<string, { id: string; name: string; color: string; created_at: string }>()
@@ -277,16 +332,29 @@ export default function MyTasks() {
         const isAdm = profile?.role === 'admin'
         const items = (isAdm ? chase : mine.filter((x) => isOverdue(x)))
           .filter((x) => activeFilter.includes(x.project_id))
+          .filter((x) => (x.parent_id ? overdueFilter.subs : overdueFilter.main))
           .sort((a, b) =>
             `${a.due_date}${a.due_time ?? ''}`.localeCompare(`${b.due_date}${b.due_time ?? ''}`),
           )
         if (!items.length) return null
         return (
           <section>
-            <h2 className="mb-2 text-sm font-semibold text-red-500">
-              ⏰ {isAdm ? t('chaseSection') : t('overdueSection')}{' '}
-              <span className="text-xs font-normal">({items.length})</span>
-            </h2>
+            <div className="mb-2 flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-red-500">
+                ⏰ {isAdm ? t('chaseSection') : t('overdueSection')}{' '}
+                <span className="text-xs font-normal">({items.length})</span>
+              </h2>
+              <div className="ml-auto">
+                <TypeFilter
+                  value={overdueFilter}
+                  onChange={(v) => {
+                    setOverdueFilter(v)
+                    localStorage.setItem('overdue_type_filter', JSON.stringify(v))
+                  }}
+                  labels={{ main: t('mainTasks'), subs: t('subtasks') }}
+                />
+              </div>
+            </div>
             <div className="space-y-2">
               {items.map((task) => {
                 const assignee = profiles.find((p) => p.id === task.assignee_id)
@@ -296,7 +364,12 @@ export default function MyTasks() {
                     to={`/projects/${task.project_id}?task=${task.id}`}
                     className="flex items-center gap-3 rounded-xl border border-red-900 bg-red-950/40 px-4 py-3 hover:border-red-600"
                   >
-                    {isAdm && assignee && <Avatar name={assignee.full_name} size={7} />}
+                    {isAdm && assignee && (
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <Avatar name={assignee.full_name} size={7} />
+                        <span className="max-w-24 truncate text-xs text-slate-400">{assignee.full_name}</span>
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">
                         {task.parent ? `${task.parent.title} – ${task.title}` : task.title}
@@ -324,39 +397,15 @@ export default function MyTasks() {
               <h2 className="text-sm font-semibold text-amber-400">
                 {t('waitingMyCheck')} <span className="text-xs">({shown.length})</span>
               </h2>
-              <div className="relative ml-auto" ref={typeFilterRef}>
-                <button
-                  onClick={() => setTypeFilterOpen(!typeFilterOpen)}
-                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800"
-                >
-                  {typeFilter.main && typeFilter.subs
-                    ? `${t('mainTasks')} + ${t('subtasks')}`
-                    : typeFilter.main
-                      ? t('mainTasks')
-                      : t('subtasks')} ▾
-                </button>
-                {typeFilterOpen && (
-                  <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
-                    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
-                      <input
-                        type="checkbox"
-                        checked={typeFilter.main}
-                        onChange={() => setTypeFilterPersist({ ...typeFilter, main: !typeFilter.main })}
-                        className="h-4 w-4 accent-indigo-600"
-                      />
-                      {t('mainTasks')}
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
-                      <input
-                        type="checkbox"
-                        checked={typeFilter.subs}
-                        onChange={() => setTypeFilterPersist({ ...typeFilter, subs: !typeFilter.subs })}
-                        className="h-4 w-4 accent-indigo-600"
-                      />
-                      {t('subtasks')}
-                    </label>
-                  </div>
-                )}
+              <div className="ml-auto">
+                <TypeFilter
+                  value={typeFilter}
+                  onChange={(v) => {
+                    setTypeFilter(v)
+                    localStorage.setItem('reviews_type_filter', JSON.stringify(v))
+                  }}
+                  labels={{ main: t('mainTasks'), subs: t('subtasks') }}
+                />
               </div>
             </div>
             <div className="space-y-2">

@@ -330,34 +330,68 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
               </h3>
               <div className="space-y-1">
                 {subtasks.map((sub) => (
-                  <div key={sub.id} className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5">
-                    <input
-                      value={subEdits[sub.id] ?? sub.title}
-                      onChange={(e) => setSubEdits((s) => ({ ...s, [sub.id]: e.target.value }))}
-                      onBlur={() => saveSubTitle(sub)}
-                      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                      disabled={!subManager}
-                      className={`flex-1 border-none bg-transparent text-sm focus:outline-none ${sub.status === 'done' ? 'text-slate-400 line-through' : ''}`}
-                    />
-                    {sub.due_date && (
-                      <span className={`text-[10px] whitespace-nowrap ${isOverdue(sub) ? 'font-semibold text-red-400' : 'text-slate-400'}`}>
-                        {fmtDue(sub)}
-                      </span>
-                    )}
-                    <TaskTicks task={sub} parent={task} onChanged={onChanged} />
-                    <select
-                      value={sub.assignee_id ?? ''}
-                      onChange={(e) => assignSubtask(sub, e.target.value)}
-                      disabled={!subManager}
-                      className="max-w-24 rounded-md border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs text-slate-400 focus:outline-none"
-                    >
-                      <option value="">—</option>
-                      {profiles.map((p) => (
-                        <option key={p.id} value={p.id}>{p.full_name}</option>
-                      ))}
-                    </select>
+                  <div key={sub.id} className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={subEdits[sub.id] ?? sub.title}
+                        onChange={(e) => setSubEdits((s) => ({ ...s, [sub.id]: e.target.value }))}
+                        onBlur={() => saveSubTitle(sub)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                        disabled={!subManager}
+                        className={`flex-1 border-none bg-transparent text-sm focus:outline-none ${sub.status === 'done' ? 'text-slate-400 line-through' : ''}`}
+                      />
+                      {!subManager && sub.due_date && (
+                        <span className={`text-[10px] whitespace-nowrap ${isOverdue(sub) ? 'font-semibold text-red-400' : 'text-slate-400'}`}>
+                          {fmtDue(sub)}
+                        </span>
+                      )}
+                      <TaskTicks task={sub} parent={task} onChanged={onChanged} />
+                      <select
+                        value={sub.assignee_id ?? ''}
+                        onChange={(e) => assignSubtask(sub, e.target.value)}
+                        disabled={!subManager}
+                        className="max-w-24 rounded-md border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs text-slate-400 focus:outline-none"
+                      >
+                        <option value="">—</option>
+                        {profiles.map((p) => (
+                          <option key={p.id} value={p.id}>{p.full_name}</option>
+                        ))}
+                      </select>
+                      {subManager && (
+                        <button onClick={() => removeSubtask(sub)} className="text-slate-600 hover:text-red-500">✕</button>
+                      )}
+                    </div>
                     {subManager && (
-                      <button onClick={() => removeSubtask(sub)} className="text-slate-600 hover:text-red-500">✕</button>
+                      <div className="mt-1 flex items-center gap-2 pl-1">
+                        <span className="text-[10px] text-slate-500">📅</span>
+                        <input
+                          type="date"
+                          value={sub.due_date ?? ''}
+                          onChange={async (e) => {
+                            const { error } = await supabase
+                              .from('tasks')
+                              .update({ due_date: e.target.value || null, ...(e.target.value ? {} : { due_time: null }) })
+                              .eq('id', sub.id)
+                            if (error) alert(error.message)
+                            onChanged()
+                          }}
+                          className={`rounded-md border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[11px] focus:border-indigo-500 focus:outline-none ${isOverdue(sub) ? 'text-red-400' : 'text-slate-300'}`}
+                        />
+                        <input
+                          type="time"
+                          value={sub.due_time?.slice(0, 5) ?? ''}
+                          disabled={!sub.due_date}
+                          onChange={async (e) => {
+                            const { error } = await supabase
+                              .from('tasks')
+                              .update({ due_time: e.target.value || null })
+                              .eq('id', sub.id)
+                            if (error) alert(error.message)
+                            onChanged()
+                          }}
+                          className="rounded-md border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[11px] text-slate-300 focus:border-indigo-500 focus:outline-none disabled:opacity-40"
+                        />
+                      </div>
                     )}
                   </div>
                 ))}
