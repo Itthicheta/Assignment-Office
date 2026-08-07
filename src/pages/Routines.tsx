@@ -6,6 +6,7 @@ import { isAdmin } from '../lib/can'
 import { notify } from '../lib/notify'
 import { isDueOn, recentDueDates, toDateStr } from '../lib/routineDates'
 import Avatar from '../components/Avatar'
+import PersonFilter, { personMatches } from '../components/PersonFilter'
 import type { Routine, RoutineCompletion } from '../lib/types'
 
 export default function Routines() {
@@ -33,16 +34,6 @@ export default function Routines() {
       return []
     }
   })
-  const [memberFilterOpen, setMemberFilterOpen] = useState(false)
-  const memberFilterRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (memberFilterRef.current && !memberFilterRef.current.contains(e.target as Node)) setMemberFilterOpen(false)
-    }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [])
 
   const admin = isAdmin(profile)
   const today = new Date()
@@ -179,45 +170,15 @@ export default function Routines() {
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold">{t('routines')}</h1>
         <div className="flex items-center gap-2">
-          {admin && (() => {
-            const assignees = [...new Set(routines.map((r) => r.assignee_id))]
-              .map((id) => profiles.find((p) => p.id === id))
-              .filter(Boolean) as typeof profiles
-            if (assignees.length < 2) return null
-            const active = memberFilter.length ? memberFilter : assignees.map((p) => p.id)
-            return (
-              <div className="relative" ref={memberFilterRef}>
-                <button
-                  onClick={() => setMemberFilterOpen(!memberFilterOpen)}
-                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800"
-                >
-                  {memberFilter.length === 0 ? t('team') : `${active.length}/${assignees.length}`} ▾
-                </button>
-                {memberFilterOpen && (
-                  <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
-                    {assignees.map((p) => (
-                      <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
-                        <input
-                          type="checkbox"
-                          checked={active.includes(p.id)}
-                          onChange={() => {
-                            const base = memberFilter.length ? memberFilter : assignees.map((x) => x.id)
-                            const next = base.includes(p.id) ? base.filter((x) => x !== p.id) : [...base, p.id]
-                            const val = next.length === assignees.length ? [] : next
-                            setMemberFilter(val)
-                            localStorage.setItem('routines_member_filter', JSON.stringify(val))
-                          }}
-                          className="h-4 w-4 accent-indigo-600"
-                        />
-                        <Avatar name={p.full_name} size={6} />
-                        <span className="truncate">{p.full_name}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })()}
+          {admin && (
+            <PersonFilter
+              filter={memberFilter}
+              onChange={(v) => {
+                setMemberFilter(v)
+                localStorage.setItem('routines_member_filter', JSON.stringify(v))
+              }}
+            />
+          )}
           <button
             onClick={() => setShowForm(!showForm)}
             className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
@@ -310,7 +271,7 @@ export default function Routines() {
 
       <div className="space-y-2">
         {routines
-          .filter((r) => !admin || memberFilter.length === 0 || memberFilter.includes(r.assignee_id))
+          .filter((r) => !admin || personMatches(memberFilter, r.assignee_id))
           .map((r) => {
           const person = profiles.find((p) => p.id === r.assignee_id)
           const dueToday = isDueOn(r, today)

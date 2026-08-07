@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { isAdmin } from '../lib/can'
 import { dueDatesInRange, toDateStr } from '../lib/routineDates'
-import Avatar from '../components/Avatar'
+import PersonFilter, { personMatches } from '../components/PersonFilter'
 import type { Project, Routine, Task } from '../lib/types'
 
 interface TaskWithParent extends Task {
@@ -43,20 +43,9 @@ export default function CalendarPage() {
       return []
     }
   })
-  const [personFilterOpen, setPersonFilterOpen] = useState(false)
-  const personFilterRef = useRef<HTMLDivElement>(null)
-
   const admin = isAdmin(profile)
   const monthStart = month
   const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0)
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (personFilterRef.current && !personFilterRef.current.contains(e.target as Node)) setPersonFilterOpen(false)
-    }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [])
 
   useEffect(() => {
     const load = async () => {
@@ -91,10 +80,6 @@ export default function CalendarPage() {
 
   const nameOf = (uid: string | null) => profiles.find((p) => p.id === uid)?.full_name ?? ''
 
-  // admin's person filter: empty = everyone; a subset hides other people
-  // (and unassigned tasks, which belong to nobody in the subset)
-  const personActive = personFilter.length ? personFilter : null
-
   const itemsByDay = useMemo(() => {
     const map: Record<string, DayItem[]> = {}
     const push = (day: string, item: DayItem) => {
@@ -104,7 +89,7 @@ export default function CalendarPage() {
     if (showTasks) {
       for (const task of tasks) {
         if (!task.due_date) continue
-        if (admin && personActive && (!task.assignee_id || !personActive.includes(task.assignee_id))) continue
+        if (admin && !personMatches(personFilter, task.assignee_id)) continue
         const project = projects.find((p) => p.id === task.project_id)
         push(task.due_date, {
           kind: 'task',
@@ -119,7 +104,7 @@ export default function CalendarPage() {
     }
     if (showRoutines) {
       for (const routine of routines) {
-        if (admin && personActive && !personActive.includes(routine.assignee_id)) continue
+        if (admin && !personMatches(personFilter, routine.assignee_id)) continue
         for (const day of dueDatesInRange(routine, monthStart, monthEnd)) {
           push(day, {
             kind: 'routine',
@@ -179,57 +164,13 @@ export default function CalendarPage() {
           🔁 {t('showRoutines')}
         </label>
         {admin && (
-          <div className="relative" ref={personFilterRef}>
-            <button
-              onClick={() => setPersonFilterOpen(!personFilterOpen)}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800"
-            >
-              {personFilter.length === 0
-                ? t('team')
-                : `${personFilter.filter((id) => id !== '__none__').length}/${profiles.length}`} ▾
-            </button>
-            {personFilterOpen && (() => {
-              // filter states: [] = everyone; ['__none__'] = nobody; else subset
-              const NONE = '__none__'
-              const allIds = profiles.map((x) => x.id)
-              const isAll = personFilter.length === 0
-              const selected = isAll ? allIds : personFilter.filter((id) => id !== NONE)
-              const persist = (val: string[]) => {
-                setPersonFilter(val)
-                localStorage.setItem('calendar_person_filter', JSON.stringify(val))
-              }
-              return (
-                <div className="absolute left-0 z-20 mt-1 w-52 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border-b border-slate-800 px-2 py-1.5 text-sm font-semibold hover:bg-slate-800">
-                    <input
-                      type="checkbox"
-                      checked={isAll}
-                      onChange={() => persist(isAll ? [NONE] : [])}
-                      className="h-4 w-4 accent-indigo-600"
-                    />
-                    {t('allPeople')}
-                  </label>
-                  {profiles.map((p) => (
-                    <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(p.id)}
-                        onChange={() => {
-                          const next = selected.includes(p.id)
-                            ? selected.filter((x) => x !== p.id)
-                            : [...selected, p.id]
-                          persist(next.length === allIds.length ? [] : next.length === 0 ? [NONE] : next)
-                        }}
-                        className="h-4 w-4 accent-indigo-600"
-                      />
-                      <Avatar name={p.full_name} size={6} />
-                      <span className="truncate">{p.full_name}</span>
-                    </label>
-                  ))}
-                </div>
-              )
-            })()}
-          </div>
+          <PersonFilter
+            filter={personFilter}
+            onChange={(v) => {
+              setPersonFilter(v)
+              localStorage.setItem('calendar_person_filter', JSON.stringify(v))
+            }}
+          />
         )}
         <div className="ml-auto flex flex-wrap items-center gap-3">
           {usedProjects.map((p) => (
