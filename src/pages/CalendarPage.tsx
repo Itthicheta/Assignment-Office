@@ -33,7 +33,8 @@ export default function CalendarPage() {
   const [tasks, setTasks] = useState<TaskWithParent[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [routines, setRoutines] = useState<Routine[]>([])
-  const [showTasks, setShowTasks] = useState(true)
+  const [showMain, setShowMain] = useState(true)
+  const [showSubs, setShowSubs] = useState(true)
   const [showRoutines, setShowRoutines] = useState(true)
   const [selectedDay, setSelectedDay] = useState<string>(toDateStr(new Date()))
   const [personFilter, setPersonFilter] = useState<string[]>(() => {
@@ -86,9 +87,10 @@ export default function CalendarPage() {
       map[day] ??= []
       map[day].push(item)
     }
-    if (showTasks) {
+    if (showMain || showSubs) {
       for (const task of tasks) {
         if (!task.due_date) continue
+        if (task.parent_id ? !showSubs : !showMain) continue
         if (admin && !personMatches(personFilter, task.assignee_id)) continue
         const project = projects.find((p) => p.id === task.project_id)
         push(task.due_date, {
@@ -118,7 +120,7 @@ export default function CalendarPage() {
       }
     }
     return map
-  }, [tasks, routines, projects, profiles, showTasks, showRoutines, monthStart.getTime(), admin, personFilter])
+  }, [tasks, routines, projects, profiles, showMain, showSubs, showRoutines, monthStart.getTime(), admin, personFilter])
 
   // Build the calendar grid (weeks start on Sunday)
   const weeks = useMemo(() => {
@@ -156,8 +158,12 @@ export default function CalendarPage() {
 
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <label className="flex cursor-pointer items-center gap-1.5">
-          <input type="checkbox" checked={showTasks} onChange={() => setShowTasks(!showTasks)} className="h-4 w-4 accent-indigo-600" />
-          {t('showTasks')}
+          <input type="checkbox" checked={showMain} onChange={() => setShowMain(!showMain)} className="h-4 w-4 accent-indigo-600" />
+          {t('mainTasks')}
+        </label>
+        <label className="flex cursor-pointer items-center gap-1.5">
+          <input type="checkbox" checked={showSubs} onChange={() => setShowSubs(!showSubs)} className="h-4 w-4 accent-indigo-600" />
+          {t('subtasks')}
         </label>
         <label className="flex cursor-pointer items-center gap-1.5">
           <input type="checkbox" checked={showRoutines} onChange={() => setShowRoutines(!showRoutines)} className="h-4 w-4 accent-slate-500" />

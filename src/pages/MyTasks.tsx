@@ -154,7 +154,32 @@ export default function MyTasks() {
   const [typeFilter, setTypeFilter] = useState<TypeFilterValue>(() => loadTypeFilter('reviews_type_filter'))
   const [overdueFilter, setOverdueFilter] = useState<TypeFilterValue>(() => loadTypeFilter('overdue_type_filter'))
   const [loaded, setLoaded] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('mytasks_collapsed') ?? '[]'))
+    } catch {
+      return new Set<string>()
+    }
+  })
   const filterRef = useRef<HTMLDivElement>(null)
+
+  const toggleSection = (key: string) =>
+    setCollapsed((s) => {
+      const next = new Set(s)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      localStorage.setItem('mytasks_collapsed', JSON.stringify([...next]))
+      return next
+    })
+
+  const chevron = (key: string) => (
+    <button
+      onClick={() => toggleSection(key)}
+      className="rounded px-1 text-sm text-slate-500 select-none hover:text-slate-300"
+    >
+      {collapsed.has(key) ? '▸' : '▾'}
+    </button>
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -348,10 +373,12 @@ export default function MyTasks() {
 
       {profile?.role === 'admin' && (pendingTasks.length > 0 || pendingRoutines.length > 0) && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-indigo-400">
+          <h2 className="mb-2 flex items-center gap-1 text-sm font-semibold text-indigo-400">
+            {chevron('approval')}
             🔏 {t('waitingMyApproval')}{' '}
             <span className="text-xs font-normal">({pendingTasks.length + pendingRoutines.length})</span>
           </h2>
+          {!collapsed.has('approval') && (
           <div className="space-y-2">
             {pendingTasks.map((task) => {
               const creator = profiles.find((p) => p.id === task.created_by)
@@ -414,6 +441,7 @@ export default function MyTasks() {
               )
             })}
           </div>
+          )}
         </section>
       )}
 
@@ -429,7 +457,8 @@ export default function MyTasks() {
         return (
           <section>
             <div className="mb-2 flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-red-500">
+              <h2 className="flex items-center gap-1 text-sm font-semibold text-red-500">
+                {chevron('chase')}
                 ⏰ {isAdm ? t('chaseSection') : t('overdueSection')}{' '}
                 <span className="text-xs font-normal">({items.length})</span>
               </h2>
@@ -444,6 +473,7 @@ export default function MyTasks() {
                 />
               </div>
             </div>
+            {!collapsed.has('chase') && (
             <div className="space-y-2">
               {items.map((task) => {
                 const assignee = profiles.find((p) => p.id === task.assignee_id)
@@ -472,6 +502,7 @@ export default function MyTasks() {
                 )
               })}
             </div>
+            )}
           </section>
         )
       })()}
@@ -483,7 +514,8 @@ export default function MyTasks() {
         return (
           <section>
             <div className="mb-2 flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-amber-400">
+              <h2 className="flex items-center gap-1 text-sm font-semibold text-amber-400">
+                {chevron('reviews')}
                 {t('waitingMyCheck')} <span className="text-xs">({shown.length})</span>
               </h2>
               <div className="ml-auto">
@@ -497,6 +529,7 @@ export default function MyTasks() {
                 />
               </div>
             </div>
+            {!collapsed.has('reviews') && (
             <div className="space-y-2">
               {shown.map((task) => {
                 const assignee = profiles.find((p) => p.id === task.assignee_id)
@@ -517,6 +550,7 @@ export default function MyTasks() {
                 )
               })}
             </div>
+            )}
           </section>
         )
       })()}
@@ -537,9 +571,11 @@ export default function MyTasks() {
           return (
             <section key={proj.id}>
               <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200">
+                {chevron(proj.id)}
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: proj.color }} />
                 {proj.name} <span className="text-xs font-normal text-slate-400">({groupTasks.length})</span>
               </h2>
+              {!collapsed.has(proj.id) && (
               <DndContext sensors={sensors} onDragEnd={onDragEnd(groupTasks)}>
                 <SortableContext items={groupTasks.map((x) => x.id)} strategy={verticalListSortingStrategy}>
                   <div className="space-y-2">
@@ -549,6 +585,7 @@ export default function MyTasks() {
                   </div>
                 </SortableContext>
               </DndContext>
+              )}
             </section>
           )
         })}
