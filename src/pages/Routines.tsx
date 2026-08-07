@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
@@ -20,6 +20,29 @@ export default function Routines() {
   const [weekdays, setWeekdays] = useState<number[]>([])
   const [monthdays, setMonthdays] = useState<number[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [eTitle, setETitle] = useState('')
+  const [eAssignee, setEAssignee] = useState('')
+  const [eRepeat, setERepeat] = useState<'weekly' | 'monthly'>('weekly')
+  const [eWeekdays, setEWeekdays] = useState<number[]>([])
+  const [eMonthdays, setEMonthdays] = useState<number[]>([])
+  const [memberFilter, setMemberFilter] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('routines_member_filter') ?? '[]')
+    } catch {
+      return []
+    }
+  })
+  const [memberFilterOpen, setMemberFilterOpen] = useState(false)
+  const memberFilterRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (memberFilterRef.current && !memberFilterRef.current.contains(e.target as Node)) setMemberFilterOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
 
   const admin = isAdmin(profile)
   const today = new Date()
@@ -111,6 +134,34 @@ export default function Routines() {
     load()
   }
 
+  const startEdit = (r: Routine) => {
+    setEditId(r.id)
+    setETitle(r.title)
+    setEAssignee(r.assignee_id)
+    setERepeat(r.repeat_type)
+    setEWeekdays(r.weekdays)
+    setEMonthdays(r.monthdays)
+  }
+
+  const saveEdit = async (r: Routine) => {
+    if (!eTitle.trim()) return
+    if (eRepeat === 'weekly' && eWeekdays.length === 0) return
+    if (eRepeat === 'monthly' && eMonthdays.length === 0) return
+    const { error } = await supabase
+      .from('routines')
+      .update({
+        title: eTitle.trim(),
+        assignee_id: admin ? eAssignee : r.assignee_id,
+        repeat_type: eRepeat,
+        weekdays: eRepeat === 'weekly' ? eWeekdays : [],
+        monthdays: eRepeat === 'monthly' ? eMonthdays : [],
+      })
+      .eq('id', r.id)
+    if (error) alert(error.message)
+    setEditId(null)
+    load()
+  }
+
   const scheduleText = (r: Routine) =>
     r.repeat_type === 'weekly'
       ? [...r.weekdays].sort((a, b) => a - b).map(dayName).join(', ')
@@ -125,14 +176,55 @@ export default function Routines() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold">{t('routines')}</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
-        >
-          + {t('newRoutine')}
-        </button>
+        <div className="flex items-center gap-2">
+          {admin && (() => {
+            const assignees = [...new Set(routines.map((r) => r.assignee_id))]
+              .map((id) => profiles.find((p) => p.id === id))
+              .filter(Boolean) as typeof profiles
+            if (assignees.length < 2) return null
+            const active = memberFilter.length ? memberFilter : assignees.map((p) => p.id)
+            return (
+              <div className="relative" ref={memberFilterRef}>
+                <button
+                  onClick={() => setMemberFilterOpen(!memberFilterOpen)}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800"
+                >
+                  {memberFilter.length === 0 ? t('team') : `${active.length}/${assignees.length}`} ▾
+                </button>
+                {memberFilterOpen && (
+                  <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
+                    {assignees.map((p) => (
+                      <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={active.includes(p.id)}
+                          onChange={() => {
+                            const base = memberFilter.length ? memberFilter : assignees.map((x) => x.id)
+                            const next = base.includes(p.id) ? base.filter((x) => x !== p.id) : [...base, p.id]
+                            const val = next.length === assignees.length ? [] : next
+                            setMemberFilter(val)
+                            localStorage.setItem('routines_member_filter', JSON.stringify(val))
+                          }}
+                          className="h-4 w-4 accent-indigo-600"
+                        />
+                        <Avatar name={p.full_name} size={6} />
+                        <span className="truncate">{p.full_name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            + {t('newRoutine')}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -217,11 +309,14 @@ export default function Routines() {
       )}
 
       <div className="space-y-2">
-        {routines.map((r) => {
+        {routines
+          .filter((r) => !admin || memberFilter.length === 0 || memberFilter.includes(r.assignee_id))
+          .map((r) => {
           const person = profiles.find((p) => p.id === r.assignee_id)
           const dueToday = isDueOn(r, today)
           const history = recentDueDates(r, 10)
           const canTick = admin || r.assignee_id === session?.user.id
+          const canEdit = admin || (r.created_by === session?.user.id && !r.approved)
           return (
             <div key={r.id} className={`rounded-xl border bg-slate-900 p-3 shadow-sm ${r.active ? 'border-slate-700' : 'border-slate-800 opacity-60'}`}>
               <div className="flex items-center gap-3">
@@ -275,10 +370,96 @@ export default function Routines() {
                     </button>
                   </>
                 )}
-                {(admin || (r.created_by === session?.user.id && !r.approved)) && (
+                {canEdit && (
+                  <button
+                    onClick={() => (editId === r.id ? setEditId(null) : startEdit(r))}
+                    className="rounded-md border border-slate-700 px-1.5 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+                  >
+                    ✏️
+                  </button>
+                )}
+                {canEdit && (
                   <button onClick={() => removeRoutine(r)} className="text-slate-600 hover:text-red-500">✕</button>
                 )}
               </div>
+
+              {editId === r.id && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    saveEdit(r)
+                  }}
+                  className="mt-3 space-y-3 border-t border-slate-800 pt-3"
+                >
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input
+                      required
+                      value={eTitle}
+                      onChange={(e) => setETitle(e.target.value)}
+                      placeholder={t('routineTitle')}
+                      className="w-full rounded-lg border border-slate-600 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                    />
+                    {admin && (
+                      <select
+                        value={eAssignee}
+                        onChange={(e) => setEAssignee(e.target.value)}
+                        className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                      >
+                        {profiles.map((p) => (
+                          <option key={p.id} value={p.id}>{p.full_name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <label className="flex cursor-pointer items-center gap-1.5">
+                      <input type="radio" checked={eRepeat === 'weekly'} onChange={() => setERepeat('weekly')} className="accent-indigo-600" />
+                      {t('repeatWeekly')}
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-1.5">
+                      <input type="radio" checked={eRepeat === 'monthly'} onChange={() => setERepeat('monthly')} className="accent-indigo-600" />
+                      {t('repeatMonthly')}
+                    </label>
+                  </div>
+                  {eRepeat === 'weekly' ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+                        <span
+                          key={d}
+                          onClick={() => setEWeekdays((w) => (w.includes(d) ? w.filter((x) => x !== d) : [...w, d]))}
+                          className={chip(eWeekdays.includes(d))}
+                        >
+                          {dayName(d)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                        <span
+                          key={d}
+                          onClick={() => setEMonthdays((m) => (m.includes(d) ? m.filter((x) => x !== d) : [...m, d]))}
+                          className={chip(eMonthdays.includes(d))}
+                        >
+                          {d}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700">
+                      {t('save')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditId(null)}
+                      className="rounded-lg px-4 py-1.5 text-sm text-slate-400 hover:bg-slate-800"
+                    >
+                      {t('cancel')}
+                    </button>
+                  </div>
+                </form>
+              )}
               {history.length > 0 && (
                 <div className="mt-2 flex items-center gap-1 pl-10">
                   <span className="mr-1 text-[10px] text-slate-400">{t('history')}:</span>
