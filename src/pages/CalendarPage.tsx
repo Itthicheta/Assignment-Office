@@ -184,33 +184,51 @@ export default function CalendarPage() {
               onClick={() => setPersonFilterOpen(!personFilterOpen)}
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800"
             >
-              {personFilter.length === 0 ? t('team') : `${personFilter.length}/${profiles.length}`} ▾
+              {personFilter.length === 0
+                ? t('team')
+                : `${personFilter.filter((id) => id !== '__none__').length}/${profiles.length}`} ▾
             </button>
-            {personFilterOpen && (
-              <div className="absolute left-0 z-20 mt-1 w-52 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
-                {profiles.map((p) => {
-                  const active = personFilter.length ? personFilter : profiles.map((x) => x.id)
-                  return (
+            {personFilterOpen && (() => {
+              // filter states: [] = everyone; ['__none__'] = nobody; else subset
+              const NONE = '__none__'
+              const allIds = profiles.map((x) => x.id)
+              const isAll = personFilter.length === 0
+              const selected = isAll ? allIds : personFilter.filter((id) => id !== NONE)
+              const persist = (val: string[]) => {
+                setPersonFilter(val)
+                localStorage.setItem('calendar_person_filter', JSON.stringify(val))
+              }
+              return (
+                <div className="absolute left-0 z-20 mt-1 w-52 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border-b border-slate-800 px-2 py-1.5 text-sm font-semibold hover:bg-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={isAll}
+                      onChange={() => persist(isAll ? [NONE] : [])}
+                      className="h-4 w-4 accent-indigo-600"
+                    />
+                    {t('allPeople')}
+                  </label>
+                  {profiles.map((p) => (
                     <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-800">
                       <input
                         type="checkbox"
-                        checked={active.includes(p.id)}
+                        checked={selected.includes(p.id)}
                         onChange={() => {
-                          const base = personFilter.length ? personFilter : profiles.map((x) => x.id)
-                          const next = base.includes(p.id) ? base.filter((x) => x !== p.id) : [...base, p.id]
-                          const val = next.length === profiles.length ? [] : next
-                          setPersonFilter(val)
-                          localStorage.setItem('calendar_person_filter', JSON.stringify(val))
+                          const next = selected.includes(p.id)
+                            ? selected.filter((x) => x !== p.id)
+                            : [...selected, p.id]
+                          persist(next.length === allIds.length ? [] : next.length === 0 ? [NONE] : next)
                         }}
                         className="h-4 w-4 accent-indigo-600"
                       />
                       <Avatar name={p.full_name} size={6} />
                       <span className="truncate">{p.full_name}</span>
                     </label>
-                  )
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-3">
