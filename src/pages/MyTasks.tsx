@@ -11,6 +11,7 @@ import { fmtDue, isDueToday, isOverdue, todayStr } from '../lib/due'
 import { setApproved } from '../lib/taskActions'
 import { notify } from '../lib/notify'
 import Avatar from '../components/Avatar'
+import PersonFilter, { personMatches } from '../components/PersonFilter'
 import type { Routine, Task } from '../lib/types'
 
 interface TaskWithProject extends Task {
@@ -161,7 +162,74 @@ export default function MyTasks() {
       return new Set<string>()
     }
   })
+  const [tab, setTab] = useState<'check' | 'todo' | 'history'>(() => {
+    const saved = localStorage.getItem('mytasks_tab')
+    return saved === 'check' || saved === 'todo' || saved === 'history' ? saved : 'todo'
+  })
+  const [history, setHistory] = useState<TaskWithProject[]>([])
+  const [histFrom, setHistFrom] = useState(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 1)
+    return d.toISOString().slice(0, 10)
+  })
+  const [histTo, setHistTo] = useState(() => todayStr())
+  const [histPerson, setHistPerson] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('history_person_filter') ?? '[]')
+    } catch {
+      return []
+    }
+  })
   const filterRef = useRef<HTMLDivElement>(null)
+
+  const isAdm = profile?.role === 'admin'
+
+  const switchTab = (v: 'check' | 'todo' | 'history') => {
+    setTab(v)
+    localStorage.setItem('mytasks_tab', v)
+  }
+
+  // first visit: admin lands on the check tab, members on to-do
+  useEffect(() => {
+    if (profile && !localStorage.getItem('mytasks_tab')) {
+      setTab(profile.role === 'admin' ? 'check' : 'todo')
+    }
+  }, [profile?.role])
+
+  // finished work for the History tab
+  useEffect(() => {
+    if (tab !== 'history' || !session) return
+    const loadHistory = async () => {
+      let q = supabase
+        .from('tasks')
+        .select('*, project:projects(id, name, color, created_at)')
+        .eq('status', 'done')
+        .gte('completed_at', `${histFrom}T00:00:00`)
+        .lte('completed_at', `${histTo}T23:59:59`)
+        .order('completed_at', { ascending: false })
+      if (!isAdm) q = q.eq('assignee_id', session.user.id)
+      const { data } = await q
+      const rows = ((data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null as { title: string } | null }))
+      const pids = [...new Set(rows.map((x) => x.parent_id).filter(Boolean))] as string[]
+      if (pids.length) {
+        const { data: parents } = await supabase.from('tasks').select('id, title').in('id', pids)
+        const titleOf: Record<string, string> = {}
+        for (const row of parents ?? []) titleOf[row.id] = row.title
+        for (const row of rows) {
+          if (row.parent_id && titleOf[row.parent_id]) row.parent = { title: titleOf[row.parent_id] }
+        }
+      }
+      setHistory(rows)
+    }
+    loadHistory()
+  }, [tab, histFrom, histTo, session?.user.id, isAdm])
+
+  const setRange = (days: number) => {
+    const d = new Date()
+    d.setDate(d.getDate() - days)
+    setHistFrom(d.toISOString().slice(0, 10))
+    setHistTo(todayStr())
+  }
 
   const toggleSection = (key: string) =>
     setCollapsed((s) => {
@@ -341,9 +409,23 @@ export default function MyTasks() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold">{t('myTasks')}</h1>
-        {myProjects.length > 0 && (
+        <div className="flex overflow-hidden rounded-lg border border-slate-700">
+          {([['check', t('tabCheck')], ['todo', t('tabTodo')], ['history', t('tabHistory')]] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => switchTab(key)}
+              className={`px-3 py-1.5 text-xs font-semibold ${
+                tab === key ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto" />
+        {tab !== 'history' && myProjects.length > 0 && (
           <div className="relative" ref={filterRef}>
             <button
               onClick={() => setFilterOpen(!filterOpen)}
@@ -371,7 +453,7 @@ export default function MyTasks() {
         )}
       </div>
 
-      {profile?.role === 'admin' && (pendingTasks.length > 0 || pendingRoutines.length > 0) && (
+      {tab === 'check' && isAdm && (pendingTasks.length > 0 || pendingRoutines.length > 0) && (
         <section>
           <h2 className="mb-2 flex items-center gap-1 text-sm font-semibold text-indigo-400">
             {chevron('approval')}
@@ -445,8 +527,7 @@ export default function MyTasks() {
         </section>
       )}
 
-      {(() => {
-        const isAdm = profile?.role === 'admin'
+      {(isAdm ? tab === 'check' : tab === 'todo') && (() => {
         const items = (isAdm ? chase : mine.filter((x) => isOverdue(x)))
           .filter((x) => activeFilter.includes(x.project_id))
           .filter((x) => (x.parent_id ? overdueFilter.subs : overdueFilter.main))
@@ -507,7 +588,7 @@ export default function MyTasks() {
         )
       })()}
 
-      {reviews.length > 0 && (() => {
+      {tab === 'check' && reviews.length > 0 && (() => {
         const shown = reviews
           .filter((task) => activeFilter.includes(task.project_id))
           .filter((task) => (task.parent_id ? typeFilter.subs : typeFilter.main))
@@ -555,13 +636,21 @@ export default function MyTasks() {
         )
       })()}
 
-      {mine.length === 0 && reviews.length === 0 && (
+      {tab === 'check' &&
+        reviews.length === 0 &&
+        (!isAdm || (pendingTasks.length === 0 && pendingRoutines.length === 0 && chase.length === 0)) && (
+          <p className="rounded-xl border border-dashed border-slate-600 p-8 text-center text-sm text-slate-400">
+            {t('nothingToCheck')}
+          </p>
+        )}
+
+      {tab === 'todo' && mine.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-600 p-8 text-center text-sm text-slate-400">
           {t('allCaughtUp')}
         </p>
       )}
 
-      {myProjects
+      {tab === 'todo' && myProjects
         .filter((p) => activeFilter.includes(p.id))
         .map((proj) => {
           const groupTasks = mine
@@ -589,6 +678,100 @@ export default function MyTasks() {
             </section>
           )
         })}
+
+      {tab === 'history' && (() => {
+        const shown = history.filter((x) => !isAdm || personMatches(histPerson, x.assignee_id))
+        const projMap = new Map<string, { id: string; name: string; color: string; created_at: string }>()
+        for (const task of shown) if (task.project) projMap.set(task.project.id, task.project)
+        const projList = [...projMap.values()].sort((a, b) => a.created_at.localeCompare(b.created_at))
+        return (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              {([[7, t('range1w')], [14, t('range2w')], [30, t('range1m')], [90, t('range3m')]] as const).map(([days, label]) => (
+                <button
+                  key={days}
+                  onClick={() => setRange(days)}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800"
+                >
+                  {label}
+                </button>
+              ))}
+              <input
+                type="date"
+                value={histFrom}
+                onChange={(e) => setHistFrom(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300 focus:border-indigo-500 focus:outline-none"
+              />
+              <span className="text-xs text-slate-500">→</span>
+              <input
+                type="date"
+                value={histTo}
+                onChange={(e) => setHistTo(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300 focus:border-indigo-500 focus:outline-none"
+              />
+              {isAdm && (
+                <div className="ml-auto">
+                  <PersonFilter
+                    filter={histPerson}
+                    onChange={(v) => {
+                      setHistPerson(v)
+                      localStorage.setItem('history_person_filter', JSON.stringify(v))
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {shown.length === 0 && (
+              <p className="rounded-xl border border-dashed border-slate-600 p-8 text-center text-sm text-slate-400">
+                {t('noHistory')}
+              </p>
+            )}
+
+            {projList.map((proj) => {
+              const items = shown.filter((x) => x.project_id === proj.id)
+              return (
+                <section key={proj.id}>
+                  <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200">
+                    {chevron(`hist-${proj.id}`)}
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: proj.color }} />
+                    {proj.name} <span className="text-xs font-normal text-slate-400">({items.length})</span>
+                  </h2>
+                  {!collapsed.has(`hist-${proj.id}`) && (
+                    <div className="space-y-2">
+                      {items.map((task) => {
+                        const assignee = profiles.find((p) => p.id === task.assignee_id)
+                        return (
+                          <Link
+                            key={task.id}
+                            to={`/projects/${task.project_id}?task=${task.id}`}
+                            className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 opacity-80 hover:border-emerald-800 hover:opacity-100"
+                          >
+                            {isAdm && assignee && (
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                <Avatar name={assignee.full_name} size={7} />
+                                <span className="hidden max-w-24 truncate text-xs text-slate-400 sm:inline">{assignee.full_name}</span>
+                              </span>
+                            )}
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-slate-300">
+                                {task.parent ? `${task.parent.title} – ${task.title}` : task.title}
+                              </span>
+                            </span>
+                            <span className="text-xs whitespace-nowrap text-emerald-400">
+                              ✓ {task.completed_at?.slice(0, 10)}
+                            </span>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  )}
+                </section>
+              )
+            })}
+          </>
+        )
+      })()}
     </div>
   )
 }

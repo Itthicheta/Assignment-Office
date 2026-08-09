@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n, type TKey } from '../lib/i18n'
@@ -11,7 +12,7 @@ import {
   canManageSubtasks,
   canRename,
 } from '../lib/can'
-import type { Activity, Comment, Priority, Task } from '../lib/types'
+import type { Activity, Comment, Priority, Project, Task } from '../lib/types'
 import { fmtDue, isOverdue } from '../lib/due'
 import { isAdmin } from '../lib/can'
 import Avatar from './Avatar'
@@ -38,6 +39,8 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
   const [description, setDescription] = useState(task.description)
   const [subEdits, setSubEdits] = useState<Record<string, string>>({})
   const [editingComment, setEditingComment] = useState<{ id: string; body: string } | null>(null)
+  const [projectList, setProjectList] = useState<Project[]>([])
+  const navigate = useNavigate()
 
   const me = session!.user.id
   const isSub = !!task.parent_id
@@ -59,6 +62,33 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
     }
     load()
   }, [task.id])
+
+  // project list for the admin's move-to-project dropdown
+  useEffect(() => {
+    if (!isAdmin(profile) || task.parent_id) return
+    supabase
+      .from('projects')
+      .select('*')
+      .eq('archived', false)
+      .order('name')
+      .then(({ data }) => setProjectList((data as Project[]) ?? []))
+  }, [profile?.role, task.parent_id])
+
+  // move the task — its subtasks and files travel with it
+  const moveToProject = async (projectId: string) => {
+    if (!projectId || projectId === task.project_id) return
+    const { error } = await supabase.from('tasks').update({ project_id: projectId }).eq('id', task.id)
+    if (error) {
+      alert(error.message)
+      return
+    }
+    const subIds = subtasks.map((s) => s.id)
+    if (subIds.length) {
+      await supabase.from('tasks').update({ project_id: projectId }).in('id', subIds)
+    }
+    await supabase.from('attachments').update({ project_id: projectId }).in('task_id', [task.id, ...subIds])
+    navigate(`/projects/${projectId}?task=${task.id}`)
+  }
 
   const reloadActivity = async () => {
     const { data } = await supabase
@@ -235,6 +265,18 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
           <div className="mt-1 flex items-center justify-between gap-2">
             {isSub && parent && (
               <span className="truncate text-xs text-slate-400">↳ {parent.title}</span>
+            )}
+            {!isSub && isAdmin(profile) && projectList.length > 1 && (
+              <select
+                value={task.project_id}
+                onChange={(e) => moveToProject(e.target.value)}
+                title={t('projects')}
+                className="max-w-40 rounded-md border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-xs text-slate-400 focus:border-indigo-500 focus:outline-none"
+              >
+                {projectList.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
             )}
             <span className="ml-auto flex items-center gap-2 text-xs whitespace-nowrap text-slate-400">
               {t('createdBy')}: {nameOf(task.created_by)}
