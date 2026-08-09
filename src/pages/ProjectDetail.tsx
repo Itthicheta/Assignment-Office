@@ -15,6 +15,8 @@ import TaskTicks from '../components/TaskTicks'
 import ApproveControl from '../components/ApproveControl'
 import TaskDrawer from '../components/TaskDrawer'
 import FilesSection from '../components/FilesSection'
+import SortableSub from '../components/SortableSub'
+import { positionAfterMove } from '../lib/reorder'
 import type { Profile, Project, Task } from '../lib/types'
 
 
@@ -92,6 +94,20 @@ function TaskRow({
     id: task.id,
     disabled: !draggable,
   })
+  const subSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  )
+  const manager = canManageSubtasks(profile, task)
+
+  const onSubDragEnd = async (e: DragEndEvent) => {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const pos = positionAfterMove(subtasks, String(active.id), String(over.id))
+    if (pos === null) return
+    await supabase.from('tasks').update({ position: pos }).eq('id', active.id)
+    onChanged()
+  }
   const overdue = isOverdue(task)
   const waitingCheck = task.tick_done && !task.tick_checked && task.status !== 'done'
 
@@ -143,26 +159,31 @@ function TaskRow({
 
       {expanded && (
         <div className="mt-1 ml-8 space-y-1">
-          {subtasks.map((sub) => (
-            <div
-              key={sub.id}
-              onClick={() => onOpenSub(sub)}
-              className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 hover:border-indigo-700"
-            >
-              <span className="text-slate-600">↳</span>
-              <span className={`min-w-0 flex-1 truncate text-sm ${sub.status === 'done' ? 'text-slate-400 line-through' : ''}`}>
-                {sub.title}
-              </span>
-              {sub.due_date && (
-                <span className={`hidden text-[10px] whitespace-nowrap sm:inline ${isOverdue(sub) ? 'font-semibold text-red-400' : 'text-slate-400'}`}>
-                  {fmtDue(sub)}
-                </span>
-              )}
-              <TaskTicks task={sub} parent={task} onChanged={onChanged} />
-              <AssigneeSelect task={sub} parent={task} profiles={profiles} onAssign={(a) => onAssign(sub, a)} />
-            </div>
-          ))}
-          {canManageSubtasks(profile, task) && (
+          <DndContext sensors={subSensors} onDragEnd={onSubDragEnd}>
+            <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              {subtasks.map((sub) => (
+                <SortableSub key={sub.id} id={sub.id} disabled={!manager}>
+                  <div
+                    onClick={() => onOpenSub(sub)}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 hover:border-indigo-700"
+                  >
+                    <span className="text-slate-600">↳</span>
+                    <span className={`min-w-0 flex-1 truncate text-sm ${sub.status === 'done' ? 'text-slate-400 line-through' : ''}`}>
+                      {sub.title}
+                    </span>
+                    {sub.due_date && (
+                      <span className={`hidden text-[10px] whitespace-nowrap sm:inline ${isOverdue(sub) ? 'font-semibold text-red-400' : 'text-slate-400'}`}>
+                        {fmtDue(sub)}
+                      </span>
+                    )}
+                    <TaskTicks task={sub} parent={task} onChanged={onChanged} />
+                    <AssigneeSelect task={sub} parent={task} profiles={profiles} onAssign={(a) => onAssign(sub, a)} />
+                  </div>
+                </SortableSub>
+              ))}
+            </SortableContext>
+          </DndContext>
+          {manager && (
             <form
               onSubmit={(e) => {
                 e.preventDefault()

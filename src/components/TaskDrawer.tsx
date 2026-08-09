@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n, type TKey } from '../lib/i18n'
@@ -19,6 +21,8 @@ import Avatar from './Avatar'
 import TaskTicks from './TaskTicks'
 import ApproveControl from './ApproveControl'
 import FilesSection from './FilesSection'
+import SortableSub from './SortableSub'
+import { positionAfterMove } from '../lib/reorder'
 
 interface Props {
   task: Task
@@ -41,6 +45,20 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
   const [editingComment, setEditingComment] = useState<{ id: string; body: string } | null>(null)
   const [projectList, setProjectList] = useState<Project[]>([])
   const navigate = useNavigate()
+  const subSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  )
+
+  const onSubDragEnd = async (e: DragEndEvent) => {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const pos = positionAfterMove(subtasks, String(active.id), String(over.id))
+    if (pos === null) return
+    const { error } = await supabase.from('tasks').update({ position: pos }).eq('id', active.id)
+    if (error) alert(error.message)
+    onChanged()
+  }
 
   const me = session!.user.id
   const isSub = !!task.parent_id
@@ -371,8 +389,11 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
                 {t('subtasks')} ({subtasks.filter((s) => s.status === 'done').length}/{subtasks.length})
               </h3>
               <div className="space-y-1">
+                <DndContext sensors={subSensors} onDragEnd={onSubDragEnd}>
+                <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
                 {subtasks.map((sub) => (
-                  <div key={sub.id} className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5">
+                  <SortableSub key={sub.id} id={sub.id} disabled={!subManager}>
+                  <div className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5">
                     <div className="flex items-center gap-2">
                       <input
                         value={subEdits[sub.id] ?? sub.title}
@@ -436,7 +457,10 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
                       </div>
                     )}
                   </div>
+                  </SortableSub>
                 ))}
+                </SortableContext>
+                </DndContext>
               </div>
               {subManager && (
                 <form onSubmit={addSubtask}>
