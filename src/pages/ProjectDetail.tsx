@@ -67,6 +67,7 @@ function TaskRow({
   subtasks,
   profiles,
   draggable,
+  dim = false,
   expanded,
   onToggleExpand,
   onOpen,
@@ -79,6 +80,7 @@ function TaskRow({
   subtasks: Task[]
   profiles: Profile[]
   draggable: boolean
+  dim?: boolean
   expanded: boolean
   onToggleExpand: () => void
   onOpen: () => void
@@ -117,7 +119,7 @@ function TaskRow({
         onClick={onOpen}
         className={`flex w-full cursor-pointer items-center gap-2 rounded-xl border bg-slate-900 px-3 py-3 text-left shadow-sm hover:border-indigo-700 ${
           isDragging ? 'z-10 opacity-70' : ''
-        } ${waitingCheck ? 'border-amber-300 bg-amber-950/40' : 'border-slate-700'}`}
+        } ${waitingCheck ? 'border-amber-300 bg-amber-950/40' : 'border-slate-700'} ${dim ? 'opacity-50 grayscale' : ''}`}
       >
         {draggable && (
           <span
@@ -217,6 +219,7 @@ export default function ProjectDetail() {
   const [newTitle, setNewTitle] = useState('')
   const [nameEdit, setNameEdit] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [logOpen, setLogOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
   const sensors = useSensors(
@@ -242,8 +245,19 @@ export default function ProjectDetail() {
     load()
   }, [load])
 
+  // three stages: working → work ticked (awaiting check) → fully done (log)
   const inProgress = useMemo(
-    () => tasks.filter((x) => !x.parent_id && x.status === 'in_progress').sort((a, b) => a.position - b.position),
+    () =>
+      tasks
+        .filter((x) => !x.parent_id && x.status === 'in_progress' && !x.tick_done)
+        .sort((a, b) => a.position - b.position),
+    [tasks],
+  )
+  const doneWork = useMemo(
+    () =>
+      tasks
+        .filter((x) => !x.parent_id && x.status === 'in_progress' && x.tick_done)
+        .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     [tasks],
   )
   const doneTasks = useMemo(
@@ -370,13 +384,14 @@ export default function ProjectDetail() {
 
   if (!loaded || !project) return <p className="text-slate-400">{t('loading')}</p>
 
-  const renderRow = (task: Task, drag: boolean) => (
+  const renderRow = (task: Task, drag: boolean, dim = false) => (
     <TaskRow
       key={task.id}
       task={task}
       subtasks={subtasksOf(task.id)}
       profiles={profiles}
       draggable={drag}
+      dim={dim}
       expanded={expandedIds.has(task.id)}
       onToggleExpand={() => toggleExpand(task.id)}
       onOpen={() => setParams({ task: task.id })}
@@ -443,7 +458,7 @@ export default function ProjectDetail() {
         />
       </form>
 
-      {inProgress.length === 0 && doneTasks.length === 0 && (
+      {inProgress.length === 0 && doneWork.length === 0 && doneTasks.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-600 p-8 text-center text-sm text-slate-400">
           {t('noTasks')}
         </p>
@@ -462,12 +477,29 @@ export default function ProjectDetail() {
         </section>
       )}
 
+      {doneWork.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold text-amber-300">
+            {t('tickWork')} <span className="text-xs font-normal text-slate-400">({doneWork.length})</span>
+          </h2>
+          <div className="space-y-2">{doneWork.map((task) => renderRow(task, false))}</div>
+        </section>
+      )}
+
       {doneTasks.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-emerald-300">
-            {t('done')} <span className="text-xs font-normal text-slate-400">({doneTasks.length})</span>
+          <h2 className="mb-2 flex items-center gap-1 text-sm font-semibold text-slate-400">
+            <button
+              onClick={() => setLogOpen(!logOpen)}
+              className="rounded px-1 text-sm text-slate-500 select-none hover:text-slate-300"
+            >
+              {logOpen ? '▾' : '▸'}
+            </button>
+            {t('logSection')} <span className="text-xs font-normal text-slate-500">({doneTasks.length})</span>
           </h2>
-          <div className="space-y-2">{doneTasks.map((task) => renderRow(task, false))}</div>
+          {logOpen && (
+            <div className="space-y-2">{doneTasks.map((task) => renderRow(task, false, true))}</div>
+          )}
         </section>
       )}
 

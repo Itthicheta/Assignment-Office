@@ -3,9 +3,9 @@ import { NavLink } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
-import Avatar from './Avatar'
 import NotificationsBell from './NotificationsBell'
 import SearchBox from './SearchBox'
+import AccountMenu from './AccountMenu'
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { profile } = useAuth()
@@ -39,7 +39,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             {lang === 'th' ? 'EN' : 'ไทย'}
           </button>
           <NotificationsBell />
-          {profile && <Avatar name={profile.full_name} size={9} />}
+          <AccountMenu />
           <button
             onClick={() => supabase.auth.signOut()}
             className="text-xs text-slate-400 hover:text-slate-300"
