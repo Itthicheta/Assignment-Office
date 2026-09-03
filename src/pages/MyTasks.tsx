@@ -455,11 +455,29 @@ export default function MyTasks() {
 
       {tab === 'check' && isAdm && (pendingTasks.length > 0 || pendingRoutines.length > 0) && (
         <section>
-          <h2 className="mb-2 flex items-center gap-1 text-sm font-semibold text-indigo-400">
-            {chevron('approval')}
-            🔏 {t('waitingMyApproval')}{' '}
-            <span className="text-xs font-normal">({pendingTasks.length + pendingRoutines.length})</span>
-          </h2>
+          <div className="mb-2 flex items-center gap-1">
+            <h2 className="flex items-center gap-1 text-sm font-semibold text-indigo-400">
+              {chevron('approval')}
+              🔏 {t('waitingMyApproval')}{' '}
+              <span className="text-xs font-normal">({pendingTasks.length + pendingRoutines.length})</span>
+            </h2>
+            <button
+              onClick={async () => {
+                if (!window.confirm(t('confirmApproveAll'))) return
+                for (const task of pendingTasks) {
+                  await setApproved(task, true, session!.user.id)
+                }
+                for (const r of pendingRoutines) {
+                  await supabase.from('routines').update({ approved: true }).eq('id', r.id)
+                  await notify({ userId: r.created_by, actorId: session!.user.id, type: 'routine_approved' })
+                }
+                load()
+              }}
+              className="ml-auto rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
+            >
+              ✓✓ {t('approveAll')}
+            </button>
+          </div>
           {!collapsed.has('approval') && (
           <div className="space-y-2">
             {pendingTasks.map((task) => {
