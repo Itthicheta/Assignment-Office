@@ -7,7 +7,6 @@ import { useAuth } from '../context/AuthContext'
 import { useI18n, type TKey } from '../lib/i18n'
 import { logActivity, notify } from '../lib/notify'
 import {
-  assigneeChoices,
   canDelete,
   canEditDescription,
   canEditFields,
@@ -18,6 +17,7 @@ import type { Activity, Comment, Priority, Project, Task } from '../lib/types'
 import { fmtDue, isOverdue } from '../lib/due'
 import { isAdmin } from '../lib/can'
 import Avatar from './Avatar'
+import AssigneeMulti from './AssigneeMulti'
 import TaskTicks from './TaskTicks'
 import ApproveControl from './ApproveControl'
 import FilesSection from './FilesSection'
@@ -128,18 +128,19 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
     return true
   }
 
-  const changeAssignee = async (assignee_id: string) => {
-    const value = assignee_id || null
-    if (!(await patch({ assignee_id: value }))) return
-    const name = profiles.find((p) => p.id === value)?.full_name
+  const changeAssignees = async (ids: string[]) => {
+    if (!(await patch({ assignee_ids: ids }))) return
+    const names = ids.map((uid) => profiles.find((p) => p.id === uid)?.full_name).filter(Boolean).join(', ')
     await logActivity({
       projectId: task.project_id,
       taskId: task.id,
       actorId: me,
-      action: value ? 'assigned' : 'unassigned',
-      detail: name ? { name } : {},
+      action: ids.length ? 'assigned' : 'unassigned',
+      detail: names ? { name: names } : {},
     })
-    await notify({ userId: value, actorId: me, taskId: task.id, type: 'assigned' })
+    for (const uid of ids.filter((x) => !task.assignee_ids.includes(x))) {
+      await notify({ userId: uid, actorId: me, taskId: task.id, type: 'assigned' })
+    }
     reloadActivity()
   }
 
@@ -167,7 +168,7 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
     e.preventDefault()
     if (!commentBody.trim()) return
     await supabase.from('comments').insert({ task_id: task.id, author_id: me, body: commentBody.trim() })
-    for (const uid of new Set([task.assignee_id, task.created_by])) {
+    for (const uid of new Set([...task.assignee_ids, task.created_by])) {
       await notify({ userId: uid, actorId: me, taskId: task.id, type: 'comment' })
     }
     setCommentBody('')
@@ -184,7 +185,7 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
       parent_id: task.id,
       title: newSub.trim(),
       created_by: me,
-      assignee_id: me,
+      assignee_ids: [me],
     })
     if (error) alert(error.message)
     setNewSub('')
@@ -205,10 +206,12 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
   }
 
   const assignSubtask = async (sub: Task, assignee_id: string) => {
-    const value = assignee_id || null
-    const { error } = await supabase.from('tasks').update({ assignee_id: value }).eq('id', sub.id)
+    const { error } = await supabase
+      .from('tasks')
+      .update({ assignee_ids: assignee_id ? [assignee_id] : [] })
+      .eq('id', sub.id)
     if (error) alert(error.message)
-    else await notify({ userId: value, actorId: me, taskId: sub.id, type: 'assigned' })
+    else if (assignee_id) await notify({ userId: assignee_id, actorId: me, taskId: sub.id, type: 'assigned' })
     onChanged()
   }
 
@@ -252,8 +255,6 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
 
   const inputCls =
     'w-full rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-900 disabled:text-slate-400'
-
-  const mainAssigneeChoices = assigneeChoices(profile, task, profiles)
 
   return (
     <div className="fixed inset-0 z-30 flex justify-end bg-black/30" onClick={onClose}>
@@ -316,20 +317,23 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-xs font-semibold text-slate-400">
               {t('assignee')}
-              <select
-                value={task.assignee_id ?? ''}
-                onChange={(e) => changeAssignee(e.target.value)}
-                disabled={!editor}
-                className={`mt-1 ${inputCls}`}
-              >
-                <option value="">{t('unassigned')}</option>
-                {mainAssigneeChoices.map((p) => (
-                  <option key={p.id} value={p.id}>{p.full_name}</option>
-                ))}
-                {task.assignee_id && !mainAssigneeChoices.some((p) => p.id === task.assignee_id) && (
-                  <option value={task.assignee_id}>{nameOf(task.assignee_id)}</option>
-                )}
-              </select>
+              {isSub ? (
+                <select
+                  value={task.assignee_ids[0] ?? ''}
+                  onChange={(e) => changeAssignees(e.target.value ? [e.target.value] : [])}
+                  disabled={!editor}
+                  className={`mt-1 ${inputCls}`}
+                >
+                  <option value="">{t('unassigned')}</option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>{p.full_name}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="mt-1">
+                  <AssigneeMulti ids={task.assignee_ids} disabled={!editor} onChange={changeAssignees} />
+                </div>
+              )}
             </label>
             <label className="block text-xs font-semibold text-slate-400">
               {t('priority')}
@@ -410,7 +414,7 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
                       )}
                       <TaskTicks task={sub} parent={task} onChanged={onChanged} />
                       <select
-                        value={sub.assignee_id ?? ''}
+                        value={sub.assignee_ids[0] ?? ''}
                         onChange={(e) => assignSubtask(sub, e.target.value)}
                         disabled={!subManager}
                         className="max-w-24 rounded-md border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs text-slate-400 focus:outline-none"
@@ -480,8 +484,8 @@ export default function TaskDrawer({ task, parent, subtasks, onClose, onChanged 
             taskId={task.id}
             canUpload={
               isAdmin(profile) ||
-              task.assignee_id === me ||
-              subtasks.some((s) => s.assignee_id === me)
+              task.assignee_ids.includes(me) ||
+              subtasks.some((s) => s.assignee_ids.includes(me))
             }
           />
           </div>

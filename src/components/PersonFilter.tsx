@@ -11,6 +11,12 @@ export function personMatches(filter: string[], personId: string | null | undefi
   return !!personId && filter.includes(personId)
 }
 
+// same, for multi-assignee lists: matches when ANY assignee is in the filter
+export function personMatchesAny(filter: string[], personIds: string[]) {
+  if (filter.length === 0) return true
+  return personIds.some((id) => filter.includes(id))
+}
+
 export default function PersonFilter({
   filter,
   onChange,

@@ -50,6 +50,8 @@ const dict = {
   waitingMyApproval: { en: 'Waiting for my approval', th: 'รอฉันอนุมัติ' },
   approveAll: { en: 'Approve all', th: 'อนุมัติทั้งหมด' },
   confirmApproveAll: { en: 'Approve every pending item?', th: 'อนุมัติทุกรายการที่รออยู่?' },
+  checkAll: { en: 'Check all', th: 'ตรวจทั้งหมด' },
+  confirmCheckAll: { en: 'Mark every listed item as Checked?', th: 'ยืนยันตรวจผ่านทุกรายการ?' },
   pendingApproval: { en: 'Pending approval', th: 'รออนุมัติ' },
   approve: { en: 'Approve', th: 'อนุมัติ' },
   approvedLock: { en: 'Approved (locked)', th: 'อนุมัติแล้ว (ล็อก)' },

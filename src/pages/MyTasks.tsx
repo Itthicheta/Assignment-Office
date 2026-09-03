@@ -8,10 +8,10 @@ import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { PriorityBadge } from '../components/Badges'
 import { fmtDue, isDueToday, isOverdue, todayStr } from '../lib/due'
-import { setApproved } from '../lib/taskActions'
+import { setApproved, setTickChecked } from '../lib/taskActions'
 import { notify } from '../lib/notify'
 import Avatar from '../components/Avatar'
-import PersonFilter, { personMatches } from '../components/PersonFilter'
+import PersonFilter, { personMatchesAny } from '../components/PersonFilter'
 import type { Routine, Task } from '../lib/types'
 
 interface TaskWithProject extends Task {
@@ -207,7 +207,7 @@ export default function MyTasks() {
         .gte('completed_at', `${histFrom}T00:00:00`)
         .lte('completed_at', `${histTo}T23:59:59`)
         .order('completed_at', { ascending: false })
-      if (!isAdm) q = q.eq('assignee_id', session.user.id)
+      if (!isAdm) q = q.contains('assignee_ids', [session.user.id])
       const { data } = await q
       const rows = ((data as TaskWithProject[]) ?? []).map((x) => ({ ...x, parent: null as { title: string } | null }))
       const pids = [...new Set(rows.map((x) => x.parent_id).filter(Boolean))] as string[]
@@ -260,7 +260,7 @@ export default function MyTasks() {
       supabase
         .from('tasks')
         .select('*, project:projects(id, name, color, created_at)')
-        .eq('assignee_id', session.user.id)
+        .contains('assignee_ids', [session.user.id])
         .eq('status', 'in_progress'),
       supabase.from('my_task_order').select('*').eq('user_id', session.user.id),
     ])
@@ -575,7 +575,7 @@ export default function MyTasks() {
             {!collapsed.has('chase') && (
             <div className="space-y-2">
               {items.map((task) => {
-                const assignee = profiles.find((p) => p.id === task.assignee_id)
+                const assignee = profiles.find((p) => p.id === task.assignee_ids[0])
                 return (
                   <Link
                     key={task.id}
@@ -585,7 +585,10 @@ export default function MyTasks() {
                     {isAdm && assignee && (
                       <span className="flex min-w-0 items-center gap-1.5">
                         <Avatar name={assignee.full_name} size={7} />
-                        <span className="max-w-24 truncate text-xs text-slate-400">{assignee.full_name}</span>
+                        <span className="max-w-24 truncate text-xs text-slate-400">
+                          {assignee.full_name}
+                          {task.assignee_ids.length > 1 && ` +${task.assignee_ids.length - 1}`}
+                        </span>
                       </span>
                     )}
                     <span className="min-w-0 flex-1">
@@ -617,7 +620,22 @@ export default function MyTasks() {
                 {chevron('reviews')}
                 {t('waitingMyCheck')} <span className="text-xs">({shown.length})</span>
               </h2>
-              <div className="ml-auto">
+              {shown.length > 0 && (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm(t('confirmCheckAll'))) return
+                    for (const task of shown) {
+                      const err = await setTickChecked(task, true, session!.user.id)
+                      if (err) alert(err)
+                    }
+                    load()
+                  }}
+                  className="ml-auto rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  ✓✓ {t('checkAll')}
+                </button>
+              )}
+              <div className={shown.length > 0 ? '' : 'ml-auto'}>
                 <TypeFilter
                   value={typeFilter}
                   onChange={(v) => {
@@ -631,21 +649,37 @@ export default function MyTasks() {
             {!collapsed.has('reviews') && (
             <div className="space-y-2">
               {shown.map((task) => {
-                const assignee = profiles.find((p) => p.id === task.assignee_id)
+                const assignee = profiles.find((p) => p.id === task.assignee_ids[0])
                 return (
-                  <Link
+                  <div
                     key={task.id}
-                    to={`/projects/${task.project_id}?task=${task.id}`}
                     className="flex items-center gap-3 rounded-xl border border-amber-900 bg-amber-950/40 px-4 py-3 hover:border-amber-600"
                   >
-                    {assignee && <Avatar name={assignee.full_name} size={7} />}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
+                    {assignee && (
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <Avatar name={assignee.full_name} size={7} />
+                        {task.assignee_ids.length > 1 && (
+                          <span className="text-xs text-slate-400">+{task.assignee_ids.length - 1}</span>
+                        )}
+                      </span>
+                    )}
+                    <Link to={`/projects/${task.project_id}?task=${task.id}`} className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium hover:text-amber-300">
                         {task.parent ? `${task.parent.title} – ${task.title}` : task.title}
                       </span>
                       <span className="block truncate text-xs text-slate-400">{task.project?.name}</span>
-                    </span>
-                  </Link>
+                    </Link>
+                    <button
+                      onClick={async () => {
+                        const err = await setTickChecked(task, true, session!.user.id)
+                        if (err) alert(err)
+                        load()
+                      }}
+                      className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+                    >
+                      ✓ {t('tickCheck')}
+                    </button>
+                  </div>
                 )
               })}
             </div>
@@ -698,7 +732,7 @@ export default function MyTasks() {
         })}
 
       {tab === 'history' && (() => {
-        const shown = history.filter((x) => !isAdm || personMatches(histPerson, x.assignee_id))
+        const shown = history.filter((x) => !isAdm || personMatchesAny(histPerson, x.assignee_ids))
         const projMap = new Map<string, { id: string; name: string; color: string; created_at: string }>()
         for (const task of shown) if (task.project) projMap.set(task.project.id, task.project)
         const projList = [...projMap.values()].sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -758,7 +792,7 @@ export default function MyTasks() {
                   {!collapsed.has(`hist-${proj.id}`) && (
                     <div className="space-y-2">
                       {items.map((task) => {
-                        const assignee = profiles.find((p) => p.id === task.assignee_id)
+                        const assignee = profiles.find((p) => p.id === task.assignee_ids[0])
                         return (
                           <Link
                             key={task.id}

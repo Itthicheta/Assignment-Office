@@ -78,6 +78,7 @@ Deno.serve(async (req) => {
     }
     const me = caller.user.id
     // transfer authored records to the acting admin; drop their activity rows
+    await admin.rpc('remove_user_assignments', { target: user_id })
     await admin.from('tasks').update({ created_by: me }).eq('created_by', user_id)
     await admin.from('comments').update({ author_id: me }).eq('author_id', user_id)
     await admin.from('attachments').update({ uploaded_by: me }).eq('uploaded_by', user_id)

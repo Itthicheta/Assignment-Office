@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { isAdmin } from '../lib/can'
 import { dueDatesInRange, toDateStr } from '../lib/routineDates'
-import PersonFilter, { personMatches } from '../components/PersonFilter'
+import PersonFilter, { personMatches, personMatchesAny } from '../components/PersonFilter'
 import type { Project, Routine, Task } from '../lib/types'
 
 interface TaskWithParent extends Task {
@@ -56,7 +56,7 @@ export default function CalendarPage() {
         .select('*')
         .gte('due_date', toDateStr(monthStart))
         .lte('due_date', toDateStr(monthEnd))
-      if (!admin && session) taskQuery = taskQuery.eq('assignee_id', session.user.id)
+      if (!admin && session) taskQuery = taskQuery.contains('assignee_ids', [session.user.id])
       const [tsk, prj, rtn] = await Promise.all([
         taskQuery,
         supabase.from('projects').select('*'),
@@ -91,13 +91,13 @@ export default function CalendarPage() {
       for (const task of tasks) {
         if (!task.due_date) continue
         if (task.parent_id ? !showSubs : !showMain) continue
-        if (admin && !personMatches(personFilter, task.assignee_id)) continue
+        if (admin && !personMatchesAny(personFilter, task.assignee_ids)) continue
         const project = projects.find((p) => p.id === task.project_id)
         push(task.due_date, {
           kind: 'task',
           id: task.id,
           label: task.parentTitle ? `${task.parentTitle} – ${task.title}` : task.title,
-          person: nameOf(task.assignee_id),
+          person: task.assignee_ids.map((uid) => nameOf(uid)).filter(Boolean).join(', '),
           color: project?.color ?? '#94a3b8',
           projectId: task.project_id,
           done: task.status === 'done',

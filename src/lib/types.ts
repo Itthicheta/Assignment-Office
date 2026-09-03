@@ -40,7 +40,7 @@ export interface Task {
   tick_checked: boolean
   approved: boolean
   position: number
-  assignee_id: string | null
+  assignee_ids: string[]
   due_date: string | null
   due_time: string | null
   created_by: string

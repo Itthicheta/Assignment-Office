@@ -27,7 +27,7 @@ export async function setTickDone(
   return null
 }
 
-// Toggle the creator/admin approval tick.
+// Toggle the checker's approval tick; every assignee is told the outcome.
 export async function setTickChecked(task: Task, value: boolean, actorId: string): Promise<string | null> {
   const { error } = await supabase.from('tasks').update({ tick_checked: value }).eq('id', task.id)
   if (error) return error.message
@@ -37,8 +37,8 @@ export async function setTickChecked(task: Task, value: boolean, actorId: string
     actorId,
     action: value ? 'checked' : 'unchecked',
   })
-  if (actorId !== task.assignee_id) {
-    await notify({ userId: task.assignee_id, actorId, taskId: task.id, type: value ? 'done' : 'returned' })
+  for (const uid of task.assignee_ids) {
+    await notify({ userId: uid, actorId, taskId: task.id, type: value ? 'done' : 'returned' })
   }
   return null
 }
@@ -64,8 +64,8 @@ export async function rejectWork(task: Task, actorId: string): Promise<string | 
   const { error } = await supabase.from('tasks').update({ tick_done: false }).eq('id', task.id)
   if (error) return error.message
   await logActivity({ projectId: task.project_id, taskId: task.id, actorId, action: 'untick_done' })
-  if (actorId !== task.assignee_id) {
-    await notify({ userId: task.assignee_id, actorId, taskId: task.id, type: 'returned' })
+  for (const uid of task.assignee_ids) {
+    await notify({ userId: uid, actorId, taskId: task.id, type: 'returned' })
   }
   return null
 }

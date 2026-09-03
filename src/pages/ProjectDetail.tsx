@@ -7,10 +7,11 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { logActivity, notify } from '../lib/notify'
-import { assigneeChoices, canEditFields, canManageSubtasks, canReorderProject, isAdmin } from '../lib/can'
+import { canEditFields, canManageSubtasks, canReorderProject, isAdmin } from '../lib/can'
 import { PriorityBadge } from '../components/Badges'
 import { fmtDue, isOverdue } from '../lib/due'
 import Avatar from '../components/Avatar'
+import AssigneeMulti from '../components/AssigneeMulti'
 import TaskTicks from '../components/TaskTicks'
 import ApproveControl from '../components/ApproveControl'
 import TaskDrawer from '../components/TaskDrawer'
@@ -25,39 +26,38 @@ function AssigneeSelect({
   parent,
   profiles,
   onAssign,
+  onAssignMulti,
 }: {
   task: Task
   parent?: Task | null
   profiles: Profile[]
   onAssign: (assigneeId: string) => void
+  onAssignMulti: (ids: string[]) => void
 }) {
   const { profile } = useAuth()
   const { t } = useI18n()
   const editable = task.parent_id ? canManageSubtasks(profile, parent!) : canEditFields(profile, task)
 
+  // tasks: multi-assignee picker; subtasks: single-assignee select
+  if (!task.parent_id) {
+    return <AssigneeMulti ids={task.assignee_ids} disabled={!editable} onChange={onAssignMulti} />
+  }
   if (!editable) {
-    return task.assignee_id ? (
-      <Avatar name={profiles.find((p) => p.id === task.assignee_id)?.full_name ?? '?'} size={7} />
+    return task.assignee_ids[0] ? (
+      <Avatar name={profiles.find((p) => p.id === task.assignee_ids[0])?.full_name ?? '?'} size={7} />
     ) : null
   }
-  const choices = assigneeChoices(profile, task, profiles)
   return (
     <select
-      value={task.assignee_id ?? ''}
+      value={task.assignee_ids[0] ?? ''}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => onAssign(e.target.value)}
       className="max-w-28 rounded-lg border border-slate-700 bg-slate-900 px-1.5 py-1 text-xs text-slate-300 focus:border-indigo-400 focus:outline-none"
     >
       <option value="">{t('unassigned')}</option>
-      {choices.map((p) => (
+      {profiles.map((p) => (
         <option key={p.id} value={p.id}>{p.full_name}</option>
       ))}
-      {/* keep an out-of-list current assignee visible */}
-      {task.assignee_id && !choices.some((p) => p.id === task.assignee_id) && (
-        <option value={task.assignee_id}>
-          {profiles.find((p) => p.id === task.assignee_id)?.full_name ?? '?'}
-        </option>
-      )}
     </select>
   )
 }
@@ -74,6 +74,7 @@ function TaskRow({
   onOpenSub,
   onChanged,
   onAssign,
+  onAssignMulti,
   onAddSub,
 }: {
   task: Task
@@ -87,6 +88,7 @@ function TaskRow({
   onOpenSub: (sub: Task) => void
   onChanged: () => void
   onAssign: (task: Task, assigneeId: string) => void
+  onAssignMulti: (task: Task, ids: string[]) => void
   onAddSub: (parent: Task, title: string) => void
 }) {
   const { profile } = useAuth()
@@ -155,7 +157,7 @@ function TaskRow({
           </span>
         )}
         <TaskTicks task={task} onChanged={onChanged} />
-        <AssigneeSelect task={task} profiles={profiles} onAssign={(a) => onAssign(task, a)} />
+        <AssigneeSelect task={task} profiles={profiles} onAssign={(a) => onAssign(task, a)} onAssignMulti={(ids) => onAssignMulti(task, ids)} />
         <ApproveControl task={task} onChanged={onChanged} />
       </div>
 
@@ -179,7 +181,7 @@ function TaskRow({
                       </span>
                     )}
                     <TaskTicks task={sub} parent={task} onChanged={onChanged} />
-                    <AssigneeSelect task={sub} parent={task} profiles={profiles} onAssign={(a) => onAssign(sub, a)} />
+                    <AssigneeSelect task={sub} parent={task} profiles={profiles} onAssign={(a) => onAssign(sub, a)} onAssignMulti={() => {}} />
                   </div>
                 </SortableSub>
               ))}
@@ -279,7 +281,7 @@ export default function ProjectDetail() {
         project_id: id,
         title: newTitle.trim(),
         created_by: session.user.id,
-        assignee_id: session.user.id,
+        assignee_ids: [session.user.id],
       })
       .select()
       .single()
@@ -299,22 +301,29 @@ export default function ProjectDetail() {
     load()
   }
 
+  // single-assignee change (subtasks)
   const assignTask = async (task: Task, assigneeId: string) => {
-    const value = assigneeId || null
-    const { error } = await supabase.from('tasks').update({ assignee_id: value }).eq('id', task.id)
+    await assignTaskMulti(task, assigneeId ? [assigneeId] : [])
+  }
+
+  // multi-assignee change (tasks): notify newly added people
+  const assignTaskMulti = async (task: Task, ids: string[]) => {
+    const { error } = await supabase.from('tasks').update({ assignee_ids: ids }).eq('id', task.id)
     if (error) {
       alert(error.message)
       return
     }
-    const name = profiles.find((p) => p.id === value)?.full_name
+    const names = ids.map((uid) => profiles.find((p) => p.id === uid)?.full_name).filter(Boolean).join(', ')
     await logActivity({
       projectId: task.project_id,
       taskId: task.id,
       actorId: session!.user.id,
-      action: value ? 'assigned' : 'unassigned',
-      detail: name ? { name } : {},
+      action: ids.length ? 'assigned' : 'unassigned',
+      detail: names ? { name: names } : {},
     })
-    await notify({ userId: value, actorId: session!.user.id, taskId: task.id, type: 'assigned' })
+    for (const uid of ids.filter((x) => !task.assignee_ids.includes(x))) {
+      await notify({ userId: uid, actorId: session!.user.id, taskId: task.id, type: 'assigned' })
+    }
     load()
   }
 
@@ -325,7 +334,7 @@ export default function ProjectDetail() {
       parent_id: parentTask.id,
       title,
       created_by: session!.user.id,
-      assignee_id: session!.user.id,
+      assignee_ids: [session!.user.id],
     })
     if (error) alert(error.message)
     load()
@@ -398,6 +407,7 @@ export default function ProjectDetail() {
       onOpenSub={(sub) => setParams({ task: sub.id })}
       onChanged={load}
       onAssign={assignTask}
+      onAssignMulti={assignTaskMulti}
       onAddSub={addSub}
     />
   )

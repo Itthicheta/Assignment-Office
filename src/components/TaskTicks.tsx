@@ -21,9 +21,9 @@ export default function TaskTicks({
   const me = session!.user.id
 
   const toggleDone = async () => {
-    // notify the checkers: admins for tasks, main-task assignee for subtasks
+    // notify the checkers: admins for tasks, main-task assignees for subtasks
     const checkers = task.parent_id
-      ? [parent?.assignee_id]
+      ? (parent?.assignee_ids ?? [])
       : profiles.filter((p) => p.role === 'admin').map((p) => p.id)
     const err = await setTickDone(task, !task.tick_done, me, checkers.filter((x) => x && x !== me))
     if (err) alert(err)
@@ -36,11 +36,12 @@ export default function TaskTicks({
     onChanged()
   }
 
-  // One box when worker = checker: tasks assigned to an admin; subtasks
-  // assigned to the main task's assignee themself.
+  // One box when worker = checker: tasks whose sole assignee is an admin;
+  // subtasks assigned to one of the main task's assignees.
   const workerChecker = task.parent_id
-    ? !!task.assignee_id && task.assignee_id === parent?.assignee_id
-    : profiles.find((p) => p.id === task.assignee_id)?.role === 'admin'
+    ? !!task.assignee_ids[0] && (parent?.assignee_ids.includes(task.assignee_ids[0]) ?? false)
+    : task.assignee_ids.length === 1 &&
+      profiles.find((p) => p.id === task.assignee_ids[0])?.role === 'admin'
 
   return (
     <span className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
